@@ -953,6 +953,52 @@ export default function FiscalPanel({ invoices }: Props) {
     flash("Gasto eliminado.");
   }
 
+  function saveRecurringExpense() {
+    if (!recurringDraft.concept.trim() || !recurringDraft.supplier.trim() || !recurringDraft.startMonth) {
+      return flash("Concepto, proveedor y mes de inicio son obligatorios.");
+    }
+    if (Number(recurringDraft.monthlyAmount) <= 0) return flash("El importe mensual debe ser mayor que 0.");
+    if (Number(recurringDraft.vatRate) < 0 || Number(recurringDraft.vatRate) > 100) return flash("Revisa el IVA del gasto recurrente.");
+    if (Number(recurringDraft.irpfDeductiblePct) < 0 || Number(recurringDraft.irpfDeductiblePct) > 100) return flash("El deducible IRPF debe estar entre 0% y 100%.");
+    if (Number(recurringDraft.vatDeductiblePct) < 0 || Number(recurringDraft.vatDeductiblePct) > 100) return flash("El deducible IVA debe estar entre 0% y 100%.");
+    if (Number(recurringDraft.dayOfMonth) < 1 || Number(recurringDraft.dayOfMonth) > 31) return flash("El día de cargo debe estar entre 1 y 31.");
+    if (recurringDraft.endMonth && recurringDraft.endMonth < recurringDraft.startMonth) return flash("El mes final no puede ser anterior al inicial.");
+
+    const stamp = nowISO();
+    const item: RecurringExpense = {
+      ...recurringDraft,
+      id: recurringDraft.id || uid(),
+      supplier: recurringDraft.supplier.trim(),
+      concept: recurringDraft.concept.trim(),
+      monthlyAmount: Number(recurringDraft.monthlyAmount || 0),
+      vatRate: Number(recurringDraft.vatRate || 0),
+      irpfDeductiblePct: Number(recurringDraft.irpfDeductiblePct || 0),
+      vatDeductiblePct: Number(recurringDraft.vatDeductiblePct || 0),
+      dayOfMonth: Number(recurringDraft.dayOfMonth || 1),
+      updatedAt: stamp
+    };
+
+    setRecurringExpenses((current) =>
+      recurringDraft.id
+        ? current.map((expense) => expense.id === item.id ? item : expense)
+        : [...current, item]
+    );
+    setRecurringDraft(blankRecurringExpense());
+    flash(recurringDraft.id ? "Gasto recurrente actualizado." : "Gasto recurrente añadido.");
+  }
+
+  function editRecurringExpense(item: RecurringExpense) {
+    setRecurringDraft({ ...item });
+  }
+
+  function deleteRecurringExpense(item: RecurringExpense) {
+    if (!window.confirm(`¿Eliminar el gasto recurrente “${item.concept}”? Los meses ya registrados se conservarán.`)) return;
+    setRecurringExpenses((current) => current.filter((expense) => expense.id !== item.id));
+    setDeletedRecurringExpenseIds((current) => current.includes(item.id) ? current : [...current, item.id]);
+    if (recurringDraft.id === item.id) setRecurringDraft(blankRecurringExpense());
+    flash("Gasto recurrente eliminado.");
+  }
+
   function updateRecord(patch: Partial<TaxRecord>) {
     const key = `${year}-Q${quarter}`;
     setRecords((current) => {
