@@ -47,6 +47,16 @@ type InvoiceLine = {
   withholding: number;
 };
 
+type SavedConcept = {
+  id: string;
+  description: string;
+  activityId: string;
+  unitPrice: number;
+  vat: number;
+  withholding: number;
+  lastUsedAt: string;
+};
+
 type Invoice = {
   id: string;
   number: string;
@@ -66,7 +76,8 @@ const storage = {
   issuer: "facturas_issuer_v1",
   clients: "facturas_clients_v1",
   activities: "facturas_activities_v1",
-  invoices: "facturas_invoices_v1"
+  invoices: "facturas_invoices_v1",
+  concepts: "facturas_concepts_v1"
 };
 
 const blankIssuer: Issuer = {
@@ -195,6 +206,7 @@ export default function InvoiceApp() {
   const [clients, setClients] = useState<Client[]>([]);
   const [activities, setActivities] = useState<ActivityPreset[]>(defaultActivities);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [savedConcepts, setSavedConcepts] = useState<SavedConcept[]>([]);
   const [draft, setDraft] = useState<Invoice>(() => emptyInvoice(defaultActivities[0]));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Invoice | null>(null);
@@ -218,6 +230,7 @@ export default function InvoiceApp() {
       let loadedClients = read<Client[]>(storage.clients, []);
       let loadedActivities = read<ActivityPreset[]>(storage.activities, defaultActivities);
       let loadedInvoices = read<Invoice[]>(storage.invoices, []);
+      let loadedConcepts = read<SavedConcept[]>(storage.concepts, []);
 
       try {
         const response = await fetch("/api/data", { cache: "no-store" });
@@ -229,6 +242,7 @@ export default function InvoiceApp() {
             loadedClients = result.data.clients || [];
             loadedActivities = result.data.activities?.length ? result.data.activities : defaultActivities;
             loadedInvoices = result.data.invoices || [];
+            loadedConcepts = result.data.concepts || loadedConcepts;
           }
         }
       } catch {
@@ -239,6 +253,7 @@ export default function InvoiceApp() {
       setClients(loadedClients);
       setActivities(loadedActivities.length ? loadedActivities : defaultActivities);
       setInvoices(loadedInvoices);
+      setSavedConcepts(loadedConcepts);
       setDraft(emptyInvoice(loadedActivities[0] || defaultActivities[0]));
       setReady(true);
     }
@@ -253,13 +268,14 @@ export default function InvoiceApp() {
     localStorage.setItem(storage.clients, JSON.stringify(clients));
     localStorage.setItem(storage.activities, JSON.stringify(activities));
     localStorage.setItem(storage.invoices, JSON.stringify(invoices));
+    localStorage.setItem(storage.concepts, JSON.stringify(savedConcepts));
 
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch("/api/data", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ issuer, clients, activities, invoices })
+          body: JSON.stringify({ issuer, clients, activities, invoices, concepts: savedConcepts })
         });
         const result = await response.json();
         if (response.ok && result.configured) setRemoteConfigured(true);
@@ -269,7 +285,7 @@ export default function InvoiceApp() {
     }, 500);
 
     return () => window.clearTimeout(timer);
-  }, [issuer, clients, activities, invoices, ready]);
+  }, [issuer, clients, activities, invoices, savedConcepts, ready]);
 
   const draftTotals = useMemo(() => totals(draft), [draft]);
   const recentInvoices = useMemo(
@@ -287,6 +303,57 @@ export default function InvoiceApp() {
       ...current,
       lines: current.lines.map((line) => (line.id === id ? { ...line, ...patch } : line))
     }));
+  }
+
+  function applyConcept(lineId: string, description: string) {
+    const normalized = description.trim().toLocaleLowerCase("es");
+    const saved = savedConcepts.find(
+      (concept) => concept.description.trim().toLocaleLowerCase("es") === normalized
+    );
+
+    updateLine(lineId, saved
+      ? {
+          description,
+          activityId: saved.activityId,
+          unitPrice: saved.unitPrice,
+          vat: saved.vat,
+          withholding: saved.withholding
+        }
+      : { description });
+  }
+
+  function rememberConcepts(lines: InvoiceLine[]) {
+    const usable = lines.filter((line) => line.description.trim());
+    if (!usable.length) return;
+
+    setSavedConcepts((current) => {
+      const next = [...current];
+
+      for (const line of usable) {
+        const description = line.description.trim();
+        const normalized = description.toLocaleLowerCase("es");
+        const existingIndex = next.findIndex(
+          (concept) => concept.description.trim().toLocaleLowerCase("es") === normalized
+        );
+
+        const concept: SavedConcept = {
+          id: existingIndex >= 0 ? next[existingIndex].id : uid(),
+          description,
+          activityId: line.activityId,
+          unitPrice: Number(line.unitPrice || 0),
+          vat: Number(line.vat || 0),
+          withholding: Number(line.withholding || 0),
+          lastUsedAt: new Date().toISOString()
+        };
+
+        if (existingIndex >= 0) next[existingIndex] = concept;
+        else next.push(concept);
+      }
+
+      return next
+        .sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt))
+        .slice(0, 100);
+    });
   }
 
   function chooseActivity(lineId: string, activityId: string) {
@@ -333,6 +400,7 @@ export default function InvoiceApp() {
         ? current.map((item) => (item.id === editingId ? saved : item))
         : [...current, saved]
     );
+    rememberConcepts(saved.lines);
     setEditingId(null);
     setDraft(emptyInvoice(activities[0]));
     setTab("facturas");
@@ -606,6 +674,16 @@ export default function InvoiceApp() {
                       <button className="button small secondary" onClick={addLine}>＋ Añadir línea</button>
                     </div>
 
+                    <datalist id="saved-concepts">
+                      {savedConcepts.map((concept) => (
+                        <option
+                          key={concept.id}
+                          value={concept.description}
+                          label={concept.unitPrice ? `${currency(concept.unitPrice)} · IVA ${concept.vat}% · IRPF ${concept.withholding}%` : undefined}
+                        />
+                      ))}
+                    </datalist>
+
                     <div className="line-head">
                       <span>Actividad / concepto</span><span>Cant.</span><span>Precio</span><span>IVA %</span><span>IRPF %</span><span>Total base</span><span></span>
                     </div>
@@ -618,8 +696,10 @@ export default function InvoiceApp() {
                             {activities.map((activity) => <option key={activity.id} value={activity.id}>{activity.name}</option>)}
                           </select>
                           <input
+                            list="saved-concepts"
+                            autoComplete="off"
                             value={line.description}
-                            onChange={(e) => updateLine(line.id, { description: e.target.value })}
+                            onChange={(e) => applyConcept(line.id, e.target.value)}
                             placeholder="Descripción del servicio o trabajo realizado"
                           />
                         </div>
@@ -634,7 +714,7 @@ export default function InvoiceApp() {
 
                     <div className="tax-explanation">
                       <strong>Retención por línea</strong>
-                      <span>Puedes mezclar, por ejemplo, una línea al 15%, otra al 7% y otra al 0% dentro de la misma factura. Los totales se calculan por separado.</span>
+                      <span>Puedes mezclar, por ejemplo, una línea al 15%, otra al 7% y otra al 0% dentro de la misma factura. Los conceptos usados se guardan automáticamente y aparecerán como sugerencia la próxima vez.</span>
                     </div>
                   </div>
 
