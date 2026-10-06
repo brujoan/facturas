@@ -848,3 +848,23 @@ h3 { margin-bottom: 8px; }
   font-weight: 650;
 }
 .billed-card strong { margin-top: 10px; }
+
+
+/* Copias de seguridad */
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+.backup-import {
+  position: relative;
+  cursor: pointer;
+}
+.backup-import input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
