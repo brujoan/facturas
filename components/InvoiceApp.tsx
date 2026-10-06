@@ -479,7 +479,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       },
       fiscal: {
         expenses: parseLocal("facturas_expenses_v1"),
-        taxRecords: parseLocal("facturas_tax_records_v1")
+        taxRecords: parseLocal("facturas_tax_records_v1"),
+        deletedExpenseIds: parseLocal("facturas_deleted_expenses_v1")
       }
     };
 
@@ -523,8 +524,17 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       const currentRecords = (() => {
         try { return JSON.parse(localStorage.getItem("facturas_tax_records_v1") || "[]"); } catch { return []; }
       })();
+      const currentDeletedExpenseIds = (() => {
+        try { return JSON.parse(localStorage.getItem("facturas_deleted_expenses_v1") || "[]"); } catch { return []; }
+      })();
 
-      const mergedExpenses = mergeById<any>(currentExpenses, fiscal.expenses || []);
+      const mergedDeletedExpenseIds = [...new Set([
+        ...currentDeletedExpenseIds,
+        ...(fiscal.deletedExpenseIds || [])
+      ])];
+      const deletedSet = new Set(mergedDeletedExpenseIds);
+      const mergedExpenses = mergeById<any>(currentExpenses, fiscal.expenses || [])
+        .filter((item: any) => !deletedSet.has(item.id));
       const recordMap = new Map<string, any>();
       currentRecords.forEach((item: any) => recordMap.set(item.key, item));
       (fiscal.taxRecords || []).forEach((item: any) => recordMap.set(item.key, { ...(recordMap.get(item.key) || {}), ...item }));
@@ -532,6 +542,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
       localStorage.setItem("facturas_expenses_v1", JSON.stringify(mergedExpenses));
       localStorage.setItem("facturas_tax_records_v1", JSON.stringify(mergedRecords));
+      localStorage.setItem("facturas_deleted_expenses_v1", JSON.stringify(mergedDeletedExpenseIds));
 
       await Promise.all([
         fetch("/api/data", {
@@ -548,7 +559,11 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         fetch("/api/fiscal", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expenses: mergedExpenses, taxRecords: mergedRecords })
+          body: JSON.stringify({
+            expenses: mergedExpenses,
+            taxRecords: mergedRecords,
+            deletedExpenseIds: mergedDeletedExpenseIds
+          })
         })
       ]);
 
@@ -746,11 +761,6 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     setSavedConcepts((current) =>
       current.map((concept) => concept.id === id ? { ...concept, ...patch } : concept)
     );
-  }
-
-  function deleteSavedConcept(id: string) {
-    setSavedConcepts((current) => current.filter((concept) => concept.id !== id));
-    flash("Concepto eliminado de sugerencias.");
   }
 
   async function logout() {
@@ -1276,7 +1286,6 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                               onChange={(e) => updateSavedConcept(concept.id, { withholding: Number(e.target.value) })}
                             />
                           </label>
-                          <button className="danger-link" onClick={() => deleteSavedConcept(concept.id)}>Eliminar</button>
                         </article>
                       ))}
                     </div>
