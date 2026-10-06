@@ -709,7 +709,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
     return invoices
       .filter((invoice) => {
-        if (invoice.status === "Anulada") return false;
+        if (!invoiceCountsAsIssued(invoice)) return false;
         if (billingPeriod === "total") return true;
 
         const year = Number(invoice.issueDate.slice(0, 4));
@@ -721,7 +721,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       })
       .reduce((sum, invoice) => {
         const t = totals(invoice);
-        return sum + t.base + t.vat - t.withholding;
+        return money(sum + t.base + t.vat - t.withholding);
       }, 0);
   }, [invoices, billingPeriod]);
 
@@ -729,7 +729,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     const groups = new Map<string, { year: number; month: number; invoices: number; total: number }>();
 
     invoices
-      .filter((invoice) => invoice.status !== "Anulada" && invoice.issueDate)
+      .filter((invoice) => invoiceCountsAsIssued(invoice) && invoice.issueDate)
       .forEach((invoice) => {
         const year = Number(invoice.issueDate.slice(0, 4));
         const month = Number(invoice.issueDate.slice(5, 7));
@@ -753,7 +753,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     window.setTimeout(() => setNotice(""), 2500);
   }
 
-  function exportBackup() {
+  async function exportBackup() {
     const parseLocal = (key: string) => {
       try {
         const raw = localStorage.getItem(key);
@@ -763,29 +763,39 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       }
     };
 
-    const backup = {
-      schema: 1,
-      version,
-      exportedAt: new Date().toISOString(),
-      main: {
-        issuer,
-        clients,
-        activities,
-        invoices,
-        concepts: savedConcepts
-      },
-      fiscal: {
-        expenses: parseLocal("facturas_expenses_v1"),
-        taxRecords: parseLocal("facturas_tax_records_v1"),
-        deletedExpenseIds: parseLocal("facturas_deleted_expenses_v1")
+    let fiscalData = {
+      expenses: parseLocal("facturas_expenses_v1"),
+      taxRecords: parseLocal("facturas_tax_records_v1"),
+      deletedExpenseIds: parseLocal("facturas_deleted_expenses_v1")
+    };
+
+    try {
+      const response = await fetch("/api/fiscal", { cache: "no-store" });
+      const result = await response.json();
+      if (response.ok && result.configured && result.data) {
+        fiscalData = {
+          expenses: result.data.expenses || fiscalData.expenses,
+          taxRecords: result.data.taxRecords || fiscalData.taxRecords,
+          deletedExpenseIds: result.data.deletedExpenseIds || fiscalData.deletedExpenseIds
+        };
       }
+    } catch {
+      // Si no hay conexión, la copia local sigue siendo exportable.
+    }
+
+    const backup = {
+      schema: 2,
+      version,
+      exportedAt: nowISO(),
+      main: mainPayload(),
+      fiscal: fiscalData
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `facturas-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = `facturas-backup-${dateISO()}.json`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -798,21 +808,47 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
     try {
       const backup = JSON.parse(await file.text());
-      if (!backup?.main || !Array.isArray(backup.main.clients) || !Array.isArray(backup.main.invoices)) {
+      if (
+        !backup?.main ||
+        !Array.isArray(backup.main.clients) ||
+        !Array.isArray(backup.main.invoices)
+      ) {
         return flash("El archivo no parece una copia válida de Facturas.");
       }
 
-      const nextIssuer = { ...blankIssuer, ...(backup.main.issuer || {}) };
-      const nextClients = mergeById<Client>(clients, backup.main.clients || []);
-      const nextActivities = normalizeActivities(mergeById<ActivityPreset>(activities, backup.main.activities || []));
-      const nextInvoices = mergeById<Invoice>(invoices, backup.main.invoices || []);
-      const nextConcepts = mergeById<SavedConcept>(savedConcepts, backup.main.concepts || []);
+      const nextDeletedClients = mergeIds(deletedClientIds, backup.main.deletedClientIds || []);
+      const nextDeletedInvoices = mergeIds(deletedInvoiceIds, backup.main.deletedInvoiceIds || []);
+      const nextDeletedActivities = mergeIds(deletedActivityIds, backup.main.deletedActivityIds || []);
+      const nextDeletedConcepts = mergeIds(deletedConceptIds, backup.main.deletedConceptIds || []);
 
-      setIssuer(nextIssuer);
+      const issuerMerge = mergeIssuerState(
+        backup.main.issuer,
+        backup.main.issuerUpdatedAt,
+        issuer,
+        issuerUpdatedAt
+      );
+
+      const nextClients = mergeById<Client>(clients, backup.main.clients || [])
+        .filter((item) => !nextDeletedClients.includes(item.id));
+      const nextActivities = normalizeActivities(
+        mergeById<ActivityPreset>(activities, backup.main.activities || [])
+          .filter((item) => !nextDeletedActivities.includes(item.id))
+      );
+      const nextInvoices = mergeById<Invoice>(invoices, backup.main.invoices || [])
+        .filter((item) => !nextDeletedInvoices.includes(item.id));
+      const nextConcepts = mergeById<SavedConcept>(savedConcepts, backup.main.concepts || [])
+        .filter((item) => !nextDeletedConcepts.includes(item.id));
+
+      setIssuer(issuerMerge.issuer);
+      setIssuerUpdatedAt(issuerMerge.updatedAt);
       setClients(nextClients);
       setActivities(nextActivities);
       setInvoices(nextInvoices);
       setSavedConcepts(nextConcepts);
+      setDeletedClientIds(nextDeletedClients);
+      setDeletedInvoiceIds(nextDeletedInvoices);
+      setDeletedActivityIds(nextDeletedActivities);
+      setDeletedConceptIds(nextDeletedConcepts);
 
       const fiscal = backup.fiscal || {};
       const currentExpenses = (() => {
@@ -825,32 +861,40 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         try { return JSON.parse(localStorage.getItem("facturas_deleted_expenses_v1") || "[]"); } catch { return []; }
       })();
 
-      const mergedDeletedExpenseIds = [...new Set([
-        ...currentDeletedExpenseIds,
-        ...(fiscal.deletedExpenseIds || [])
-      ])];
+      const mergedDeletedExpenseIds = mergeIds(currentDeletedExpenseIds, fiscal.deletedExpenseIds || []);
       const deletedSet = new Set(mergedDeletedExpenseIds);
       const mergedExpenses = mergeById<any>(currentExpenses, fiscal.expenses || [])
         .filter((item: any) => !deletedSet.has(item.id));
+
       const recordMap = new Map<string, any>();
       currentRecords.forEach((item: any) => recordMap.set(item.key, item));
-      (fiscal.taxRecords || []).forEach((item: any) => recordMap.set(item.key, { ...(recordMap.get(item.key) || {}), ...item }));
+      (fiscal.taxRecords || []).forEach((item: any) => {
+        const existing = recordMap.get(item.key);
+        if (!existing || timestamp(item.updatedAt) > timestamp(existing.updatedAt)) {
+          recordMap.set(item.key, { ...item, updatedAt: item.updatedAt || nowISO() });
+        }
+      });
       const mergedRecords = [...recordMap.values()];
 
       localStorage.setItem("facturas_expenses_v1", JSON.stringify(mergedExpenses));
       localStorage.setItem("facturas_tax_records_v1", JSON.stringify(mergedRecords));
       localStorage.setItem("facturas_deleted_expenses_v1", JSON.stringify(mergedDeletedExpenseIds));
 
-      await Promise.all([
+      const [mainResponse, fiscalResponse] = await Promise.all([
         fetch("/api/data", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            issuer: nextIssuer,
+            issuer: issuerMerge.issuer,
+            issuerUpdatedAt: issuerMerge.updatedAt,
             clients: nextClients,
             activities: nextActivities,
             invoices: nextInvoices,
-            concepts: nextConcepts
+            concepts: nextConcepts,
+            deletedClientIds: nextDeletedClients,
+            deletedInvoiceIds: nextDeletedInvoices,
+            deletedActivityIds: nextDeletedActivities,
+            deletedConceptIds: nextDeletedConcepts
           })
         }),
         fetch("/api/fiscal", {
@@ -863,6 +907,10 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
           })
         })
       ]);
+
+      if (!mainResponse.ok || !fiscalResponse.ok) {
+        return flash("La copia se importó localmente, pero falta sincronizar con el servidor.");
+      }
 
       flash("Copia importada y sincronizada.");
       window.setTimeout(() => window.location.reload(), 700);
@@ -916,7 +964,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
           unitPrice: Number(line.unitPrice || 0),
           vat: Number(line.vat || 0),
           withholding: Number(line.withholding || 0),
-          lastUsedAt: new Date().toISOString()
+          lastUsedAt: nowISO(),
+          updatedAt: nowISO()
         };
 
         if (existingIndex >= 0) next[existingIndex] = concept;
@@ -954,22 +1003,66 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   }
 
   function saveInvoice() {
-    if (!draft.clientId) return flash("Selecciona un cliente.");
-    if (!draft.lines.some((line) => line.description.trim())) return flash("Añade al menos un concepto.");
-    if (!issuer.fiscalName || !issuer.taxId) return flash("Completa tus datos fiscales en Configuración.");
-    if ((draft.invoiceMode || "normal") === "monthly") {
-      if (!draft.periodFrom || !draft.periodTo) return flash("Indica el periodo facturado desde/hasta.");
-      if (draft.periodFrom > draft.periodTo) return flash("La fecha inicial del periodo no puede ser posterior a la final.");
+    const selectedClient = clients.find((client) => client.id === draft.clientId);
+    const isDraft = draft.status === "Borrador";
+
+    if (!isDraft) {
+      if (!draft.clientId || !selectedClient) return flash("Selecciona un cliente.");
+      if (!draft.lines.some((line) => line.description.trim())) return flash("Añade al menos un concepto.");
+      if (!issuer.fiscalName || !issuer.taxId || !issuer.address || !issuer.postalCode || !issuer.city) {
+        return flash("Completa tus datos fiscales y dirección antes de emitir.");
+      }
+      if (!selectedClient.name || !selectedClient.taxId || !selectedClient.address) {
+        return flash("Completa nombre, NIF/CIF y dirección del cliente antes de emitir.");
+      }
+
+      for (const line of draft.lines) {
+        if (!line.description.trim()) continue;
+        if (Number(line.quantity) <= 0) return flash("La cantidad de cada concepto debe ser mayor que 0.");
+        if (Number(line.unitPrice) < 0) return flash("El precio no puede ser negativo.");
+        if (Number(line.vat) < 0 || Number(line.vat) > 100) return flash("Revisa el porcentaje de IVA.");
+        if (Number(line.withholding) < 0 || Number(line.withholding) > 100) return flash("Revisa el porcentaje de IRPF.");
+      }
+
+      if ((draft.invoiceMode || "normal") === "monthly") {
+        if (!draft.periodFrom || !draft.periodTo) return flash("Indica el periodo facturado desde/hasta.");
+        if (draft.periodFrom > draft.periodTo) return flash("La fecha inicial del periodo no puede ser posterior a la final.");
+        if (draft.periodFrom.slice(0, 7) !== draft.periodTo.slice(0, 7)) {
+          return flash("Una factura mensual debe corresponder a un único mes natural.");
+        }
+
+        const invalidServiceDate = draft.lines.some(
+          (line) =>
+            line.serviceDate &&
+            (line.serviceDate < (draft.periodFrom || "") || line.serviceDate > (draft.periodTo || ""))
+        );
+        if (invalidServiceDate) return flash("Hay una fecha de concepto fuera del periodo facturado.");
+      }
+
+      const manualNumber = draft.number.trim();
+      if (
+        manualNumber &&
+        invoices.some((invoice) => invoice.id !== editingId && invoice.number.trim() === manualNumber)
+      ) {
+        return flash(`Ya existe una factura con el número ${manualNumber}.`);
+      }
     }
 
-    const number = draft.number.trim() || nextNumber(draft.series, invoices);
+    const previous = editingId ? invoices.find((item) => item.id === editingId) : undefined;
+    const stamp = nowISO();
     const saved: Invoice = {
       ...draft,
-      number,
-      status: draft.status,
-      createdAt: editingId
-        ? invoices.find((item) => item.id === editingId)?.createdAt || draft.createdAt
-        : new Date().toISOString()
+      number: isDraft ? draft.number.trim() : draft.number.trim(),
+      issuerSnapshot:
+        previous?.issuerSnapshot ||
+        draft.issuerSnapshot ||
+        (!isDraft ? { ...issuer } : undefined),
+      clientSnapshot:
+        previous?.clientSnapshot ||
+        draft.clientSnapshot ||
+        (!isDraft && selectedClient ? { ...selectedClient } : undefined),
+      createdAt: previous?.createdAt || draft.createdAt || stamp,
+      updatedAt: stamp
     };
 
     setInvoices((current) =>
@@ -981,7 +1074,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     setEditingId(null);
     setDraft(emptyInvoice(activities[0]));
     setTab("facturas");
-    flash(editingId ? "Factura actualizada." : `Factura ${number} guardada.`);
+    flash(editingId ? "Factura actualizada." : (isDraft ? "Borrador guardado." : "Factura guardada y pendiente de numeración segura."));
   }
 
   function editInvoice(invoice: Invoice) {
@@ -991,15 +1084,29 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   }
 
   function duplicateInvoice(invoice: Invoice) {
+    const today = dateISO();
+    const range = monthRange(today);
+    const stamp = nowISO();
+
     setDraft({
       ...JSON.parse(JSON.stringify(invoice)),
       id: uid(),
       number: "",
-      issueDate: dateISO(),
-      operationDate: dateISO(),
-      dueDate: dateISO(),
+      issueDate: today,
+      operationDate: today,
+      periodFrom: (invoice.invoiceMode || "normal") === "monthly" ? range.first : "",
+      periodTo: (invoice.invoiceMode || "normal") === "monthly" ? range.last : "",
+      dueDate: today,
       status: "Borrador",
-      createdAt: new Date().toISOString()
+      issuerSnapshot: undefined,
+      clientSnapshot: undefined,
+      lines: invoice.lines.map((line) => ({
+        ...line,
+        id: uid(),
+        serviceDate: (invoice.invoiceMode || "normal") === "monthly" ? "" : line.serviceDate
+      })),
+      createdAt: stamp,
+      updatedAt: stamp
     });
     setEditingId(null);
     setTab("nueva");
@@ -1007,18 +1114,21 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
   function updateInvoiceInternalNote(id: string, internalNote: string) {
     setInvoices((current) =>
-      current.map((invoice) => invoice.id === id ? { ...invoice, internalNote } : invoice)
+      current.map((invoice) => invoice.id === id ? { ...invoice, internalNote, updatedAt: nowISO() } : invoice)
     );
   }
 
   function deleteInvoice(id: string) {
     if (!window.confirm("¿Eliminar esta factura? Esta acción no se puede deshacer.")) return;
     setInvoices((current) => current.filter((item) => item.id !== id));
+    setDeletedInvoiceIds((current) => current.includes(id) ? current : [...current, id]);
   }
 
   function printInvoice(invoice: Invoice) {
     setPreview(invoice);
-    window.setTimeout(() => window.print(), 100);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => window.print());
+    });
   }
 
   function saveClient() {
@@ -1033,7 +1143,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       name: clientDraft.name.trim(),
       taxId: clientDraft.taxId.trim(),
       phone: (clientDraft.phone || "").trim(),
-      notes: clientDraft.notes || ""
+      notes: clientDraft.notes || "",
+      updatedAt: nowISO()
     };
 
     setClients((current) => editing
@@ -1053,26 +1164,27 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     }
     if (!window.confirm(`¿Eliminar a ${client.name}? Esta acción no se puede deshacer.`)) return;
     setClients((current) => current.filter((item) => item.id !== client.id));
+    setDeletedClientIds((current) => current.includes(client.id) ? current : [...current, client.id]);
     if (clientDraft.id === client.id) setClientDraft({ ...blankClient });
     flash("Cliente eliminado.");
   }
 
   function addActivity() {
     if (!activityDraft.name.trim()) return flash("Pon un nombre a la actividad.");
-    setActivities((current) => [...current, { ...activityDraft, id: uid() }]);
+    setActivities((current) => [...current, { ...activityDraft, id: uid(), updatedAt: nowISO() }]);
     setActivityDraft({ name: "", vat: 21, withholding: 0 });
     flash("Actividad añadida.");
   }
 
   function updateActivity(id: string, patch: Partial<ActivityPreset>) {
     setActivities((current) =>
-      current.map((activity) => activity.id === id ? { ...activity, ...patch } : activity)
+      current.map((activity) => activity.id === id ? { ...activity, ...patch, updatedAt: nowISO() } : activity)
     );
   }
 
   function updateSavedConcept(id: string, patch: Partial<SavedConcept>) {
     setSavedConcepts((current) =>
-      current.map((concept) => concept.id === id ? { ...concept, ...patch } : concept)
+      current.map((concept) => concept.id === id ? { ...concept, ...patch, updatedAt: nowISO() } : concept)
     );
   }
 
