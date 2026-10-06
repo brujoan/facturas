@@ -1409,7 +1409,13 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                                 />
                               </td>
                               <td className="actions">
-                                <button onClick={() => printInvoice(invoice)}>PDF</button>
+                                <button
+                                  onClick={() => printInvoice(invoice)}
+                                  disabled={invoiceCountsAsIssued(invoice) && !invoice.number}
+                                  title={invoiceCountsAsIssued(invoice) && !invoice.number ? "Esperando numeración segura" : "Imprimir / guardar PDF"}
+                                >
+                                  {invoiceCountsAsIssued(invoice) && !invoice.number ? "Numerando…" : "PDF"}
+                                </button>
                                 <button onClick={() => editInvoice(invoice)}>Editar</button>
                                 <button onClick={() => duplicateInvoice(invoice)}>Duplicar</button>
                                 <button className="danger-link" onClick={() => deleteInvoice(invoice.id)}>Eliminar</button>
@@ -1430,7 +1436,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               <header className="page-header">
                 <div>
                   <p className="eyebrow">{editingId ? "Editar" : "Nueva"}</p>
-                  <h1>{editingId ? `Factura ${draft.number}` : "Crear factura"}</h1>
+                  <h1>{editingId ? `Factura ${draft.number || "sin numerar"}` : "Crear factura"}</h1>
                   <p className="muted">Cada línea puede tener una actividad, IVA y retención diferentes.</p>
                 </div>
                 <div className="header-actions">
