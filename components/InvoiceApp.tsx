@@ -394,6 +394,109 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     window.setTimeout(() => setNotice(""), 2500);
   }
 
+  function exportBackup() {
+    const parseLocal = (key: string) => {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const backup = {
+      schema: 1,
+      version,
+      exportedAt: new Date().toISOString(),
+      main: {
+        issuer,
+        clients,
+        activities,
+        invoices,
+        concepts: savedConcepts
+      },
+      fiscal: {
+        expenses: parseLocal("facturas_expenses_v1"),
+        taxRecords: parseLocal("facturas_tax_records_v1")
+      }
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `facturas-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    flash("Copia de seguridad exportada.");
+  }
+
+  async function importBackup(file?: File) {
+    if (!file) return;
+
+    try {
+      const backup = JSON.parse(await file.text());
+      if (!backup?.main || !Array.isArray(backup.main.clients) || !Array.isArray(backup.main.invoices)) {
+        return flash("El archivo no parece una copia válida de Facturas.");
+      }
+
+      const nextIssuer = { ...blankIssuer, ...(backup.main.issuer || {}) };
+      const nextClients = mergeById<Client>(clients, backup.main.clients || []);
+      const nextActivities = normalizeActivities(mergeById<ActivityPreset>(activities, backup.main.activities || []));
+      const nextInvoices = mergeById<Invoice>(invoices, backup.main.invoices || []);
+      const nextConcepts = mergeById<SavedConcept>(savedConcepts, backup.main.concepts || []);
+
+      setIssuer(nextIssuer);
+      setClients(nextClients);
+      setActivities(nextActivities);
+      setInvoices(nextInvoices);
+      setSavedConcepts(nextConcepts);
+
+      const fiscal = backup.fiscal || {};
+      const currentExpenses = (() => {
+        try { return JSON.parse(localStorage.getItem("facturas_expenses_v1") || "[]"); } catch { return []; }
+      })();
+      const currentRecords = (() => {
+        try { return JSON.parse(localStorage.getItem("facturas_tax_records_v1") || "[]"); } catch { return []; }
+      })();
+
+      const mergedExpenses = mergeById<any>(currentExpenses, fiscal.expenses || []);
+      const recordMap = new Map<string, any>();
+      currentRecords.forEach((item: any) => recordMap.set(item.key, item));
+      (fiscal.taxRecords || []).forEach((item: any) => recordMap.set(item.key, { ...(recordMap.get(item.key) || {}), ...item }));
+      const mergedRecords = [...recordMap.values()];
+
+      localStorage.setItem("facturas_expenses_v1", JSON.stringify(mergedExpenses));
+      localStorage.setItem("facturas_tax_records_v1", JSON.stringify(mergedRecords));
+
+      await Promise.all([
+        fetch("/api/data", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            issuer: nextIssuer,
+            clients: nextClients,
+            activities: nextActivities,
+            invoices: nextInvoices,
+            concepts: nextConcepts
+          })
+        }),
+        fetch("/api/fiscal", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expenses: mergedExpenses, taxRecords: mergedRecords })
+        })
+      ]);
+
+      flash("Copia importada y sincronizada.");
+      window.setTimeout(() => window.location.reload(), 700);
+    } catch {
+      flash("No se pudo importar la copia de seguridad.");
+    }
+  }
+
   function updateLine(id: string, patch: Partial<InvoiceLine>) {
     setDraft((current) => ({
       ...current,
@@ -1006,9 +1109,24 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                   <h2>Datos y copias de seguridad</h2>
                   <p>
                     {remoteConfigured
-                      ? "Base de datos conectada: facturas, clientes, actividades y configuración quedan sincronizados entre dispositivos. El navegador conserva además una copia local."
-                      : "Modo local activo: facturas y clientes se guardan en este navegador. En cuanto configuremos Supabase, la misma interfaz pasará a sincronizar los datos entre dispositivos."}
+                      ? "Supabase conectado: los datos se sincronizan entre dispositivos, se conserva una copia local y el servidor crea un snapshot antes de cada escritura."
+                      : "La copia local sigue activa. Si la sincronización remota falla, tus datos permanecen en este navegador hasta recuperar la conexión."}
                   </p>
+                  <div className="backup-actions">
+                    <button className="button secondary" onClick={exportBackup}>Exportar copia JSON</button>
+                    <label className="button secondary backup-import">
+                      Importar copia
+                      <input
+                        type="file"
+                        accept="application/json,.json"
+                        onChange={(e) => {
+                          void importBackup(e.target.files?.[0]);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <p className="saved-note">Recomendación: exporta una copia antes de cambios importantes. Importar una copia fusiona los datos existentes; no elimina registros que ya estén en Supabase.</p>
                 </div>
               </div>
             </section>
