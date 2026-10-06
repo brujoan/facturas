@@ -52,6 +52,8 @@ type Props = {
 
 const EXPENSES_KEY = "facturas_expenses_v1";
 const TAX_RECORDS_KEY = "facturas_tax_records_v1";
+const DELETED_EXPENSES_KEY = "facturas_deleted_expenses_v1";
+const START_YEAR = 2026;
 
 function uid() {
   return crypto.randomUUID();
@@ -157,6 +159,7 @@ export default function FiscalPanel({ invoices }: Props) {
   const [quarter, setQuarter] = useState(currentQuarter());
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [records, setRecords] = useState<TaxRecord[]>([]);
+  const [deletedExpenseIds, setDeletedExpenseIds] = useState<string[]>([]);
   const [expenseDraft, setExpenseDraft] = useState<Expense>(blankExpense());
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
@@ -165,28 +168,38 @@ export default function FiscalPanel({ invoices }: Props) {
     async function loadFiscalData() {
       let loadedExpenses: Expense[] = [];
       let loadedRecords: TaxRecord[] = [];
+      let loadedDeletedExpenseIds: string[] = [];
 
       try {
         const savedExpenses = localStorage.getItem(EXPENSES_KEY);
         const savedRecords = localStorage.getItem(TAX_RECORDS_KEY);
+        const savedDeleted = localStorage.getItem(DELETED_EXPENSES_KEY);
         loadedExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
         loadedRecords = savedRecords ? JSON.parse(savedRecords) : [];
+        loadedDeletedExpenseIds = savedDeleted ? JSON.parse(savedDeleted) : [];
       } catch {
         // Si falla la lectura local, intentamos recuperar desde Supabase.
       }
 
-      const hadLocalData = loadedExpenses.length > 0 || loadedRecords.length > 0;
+      const hadLocalData = loadedExpenses.length > 0 || loadedRecords.length > 0 || loadedDeletedExpenseIds.length > 0;
 
       try {
         const response = await fetch("/api/fiscal", { cache: "no-store" });
         const result = await response.json();
         if (response.ok && result.configured) {
           const remote = result.data || {};
+          loadedDeletedExpenseIds = [...new Set([
+            ...(remote.deletedExpenseIds || []),
+            ...loadedDeletedExpenseIds
+          ])];
+          const deletedSet = new Set(loadedDeletedExpenseIds);
+
           loadedExpenses = mergeByKey<Expense>(
             remote.expenses || [],
             loadedExpenses,
             (item) => item.id
-          );
+          ).filter((item) => !deletedSet.has(item.id));
+
           loadedRecords = mergeByKey<TaxRecord>(
             remote.taxRecords || [],
             loadedRecords,
@@ -199,7 +212,8 @@ export default function FiscalPanel({ invoices }: Props) {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 expenses: loadedExpenses,
-                taxRecords: loadedRecords
+                taxRecords: loadedRecords,
+                deletedExpenseIds: loadedDeletedExpenseIds
               })
             });
           }
@@ -210,6 +224,7 @@ export default function FiscalPanel({ invoices }: Props) {
 
       setExpenses(loadedExpenses);
       setRecords(loadedRecords);
+      setDeletedExpenseIds(loadedDeletedExpenseIds);
       setReady(true);
     }
 
@@ -221,13 +236,14 @@ export default function FiscalPanel({ invoices }: Props) {
 
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
     localStorage.setItem(TAX_RECORDS_KEY, JSON.stringify(records));
+    localStorage.setItem(DELETED_EXPENSES_KEY, JSON.stringify(deletedExpenseIds));
 
     const timer = window.setTimeout(async () => {
       try {
         await fetch("/api/fiscal", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expenses, taxRecords: records })
+          body: JSON.stringify({ expenses, taxRecords: records, deletedExpenseIds })
         });
       } catch {
         // La copia local sigue siendo el respaldo inmediato del dispositivo.
@@ -235,7 +251,7 @@ export default function FiscalPanel({ invoices }: Props) {
     }, 600);
 
     return () => window.clearTimeout(timer);
-  }, [expenses, records, ready]);
+  }, [expenses, records, deletedExpenseIds, ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -250,12 +266,19 @@ export default function FiscalPanel({ invoices }: Props) {
         const result = await response.json();
         if (!response.ok || !result.data || cancelled) return;
 
+        const remoteDeleted = result.data.deletedExpenseIds || [];
+        if (remoteDeleted.length) {
+          setDeletedExpenseIds((current) => [...new Set([...current, ...remoteDeleted])]);
+        }
         if (result.data.expenses) {
-          setExpenses((current) => mergeByKey<Expense>(
-            current,
-            result.data.expenses,
-            (item) => item.id
-          ));
+          setExpenses((current) => {
+            const deletedSet = new Set([...deletedExpenseIds, ...remoteDeleted]);
+            return mergeByKey<Expense>(
+              current,
+              result.data.expenses,
+              (item) => item.id
+            ).filter((item) => !deletedSet.has(item.id));
+          });
         }
         if (result.data.taxRecords) {
           setRecords((current) => mergeByKey<TaxRecord>(
@@ -278,20 +301,29 @@ export default function FiscalPanel({ invoices }: Props) {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);
     };
-  }, [ready]);
+  }, [ready, deletedExpenseIds]);
 
   const availableYears = useMemo(() => {
-    const values = new Set<number>([new Date().getFullYear()]);
+    const currentYear = new Date().getFullYear();
+    const values = new Set<number>();
+    for (let value = START_YEAR; value <= currentYear; value += 1) values.add(value);
+
     invoices.forEach((invoice) => {
       const value = yearOf(invoice.issueDate);
-      if (value) values.add(value);
+      if (value >= START_YEAR) values.add(value);
     });
     expenses.forEach((expense) => {
       const value = yearOf(expense.date);
-      if (value) values.add(value);
+      if (value >= START_YEAR) values.add(value);
     });
+    records.forEach((record) => {
+      if (record.year >= START_YEAR) values.add(record.year);
+    });
+
     return [...values].sort((a, b) => b - a);
-  }, [invoices, expenses]);
+  }, [invoices, expenses, records]);
+
+  const visibleQuarters = year === START_YEAR ? [3, 4] : [1, 2, 3, 4];
 
   const activeRecord = useMemo(
     () => records.find((record) => record.key === `${year}-Q${quarter}`) || emptyRecord(year, quarter),
@@ -459,7 +491,9 @@ export default function FiscalPanel({ invoices }: Props) {
   function deleteExpense(expense: Expense) {
     if (!window.confirm(`¿Eliminar el gasto “${expense.concept}”?`)) return;
     setExpenses((current) => current.filter((item) => item.id !== expense.id));
+    setDeletedExpenseIds((current) => current.includes(expense.id) ? current : [...current, expense.id]);
     if (expenseDraft.id === expense.id) setExpenseDraft(blankExpense());
+    flash("Gasto eliminado.");
   }
 
   function updateRecord(patch: Partial<TaxRecord>) {
@@ -485,7 +519,7 @@ export default function FiscalPanel({ invoices }: Props) {
         <div>
           <p className="eyebrow">Control fiscal</p>
           <h1>Trimestrales</h1>
-          <p className="muted">Facturas emitidas, gastos, IVA, retenciones y estado de tus modelos.</p>
+          <p className="muted">Facturas emitidas, gastos, IVA, retenciones y estado de tus modelos. Puedes cambiar de ejercicio para consultar años anteriores.</p>
         </div>
         <label className="year-select">
           Ejercicio
@@ -505,8 +539,14 @@ export default function FiscalPanel({ invoices }: Props) {
         <span className="fiscal-alert-note">Si el último día es inhábil, el vencimiento puede desplazarse.</span>
       </div>
 
+      {year === START_YEAR && (
+        <div className="tax-warning fiscal-start-note">
+          Inicio de actividad en agosto de 2026: para 2026 se muestran T3 (julio–septiembre) y T4 (octubre–diciembre).
+        </div>
+      )}
+
       <div className="quarter-grid">
-        {[1, 2, 3, 4].map((q) => {
+        {visibleQuarters.map((q) => {
           const record = records.find((item) => item.key === `${year}-Q${q}`) || emptyRecord(year, q);
           return (
             <button
