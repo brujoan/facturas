@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import FiscalPanel from "@/components/FiscalPanel";
+import { downloadInvoicePdf } from "@/lib/invoicePdf";
 
 type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
@@ -1271,11 +1272,49 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     setDeletedInvoiceIds((current) => current.includes(id) ? current : [...current, id]);
   }
 
-  function printInvoice(invoice: Invoice) {
-    setPreview(invoice);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => window.print());
-    });
+  async function printInvoice(invoice: Invoice) {
+    const client = invoice.clientSnapshot || clients.find((item) => item.id === invoice.clientId);
+    const invoiceIssuer = invoice.issuerSnapshot || issuer;
+
+    if (!client) return flash("No se encuentran los datos del cliente para generar el PDF.");
+    if (!invoice.number.trim()) return flash("La factura todavía no tiene numeración definitiva.");
+
+    try {
+      await downloadInvoicePdf({
+        number: invoice.number,
+        issueDate: invoice.issueDate,
+        notes: invoice.notes || "",
+        paymentMethod: invoice.paymentMethod || "Transferencia bancaria",
+        issuer: {
+          fiscalName: invoiceIssuer.fiscalName,
+          taxId: invoiceIssuer.taxId,
+          address: invoiceIssuer.address,
+          postalCode: invoiceIssuer.postalCode,
+          city: invoiceIssuer.city,
+          province: invoiceIssuer.province,
+          email: invoiceIssuer.email,
+          iban: invoiceIssuer.iban
+        },
+        client: {
+          name: client.name,
+          taxId: client.taxId,
+          address: client.address,
+          postalCode: client.postalCode,
+          city: client.city,
+          province: client.province
+        },
+        lines: invoice.lines.map((line) => ({
+          description: line.description,
+          quantity: Number(line.quantity || 0),
+          unitPrice: Number(line.unitPrice || 0),
+          vat: Number(line.vat || 0),
+          withholding: Number(line.withholding || 0)
+        }))
+      });
+    } catch (error) {
+      console.error(error);
+      flash("No se pudo generar el PDF de la factura.");
+    }
   }
 
   function saveClient() {
