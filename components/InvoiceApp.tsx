@@ -7,6 +7,8 @@ type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
 type InvoiceMode = "normal" | "monthly";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
+type InvoiceSortKey = "number" | "date" | "client" | "status" | "total";
+type SortDirection = "asc" | "desc";
 type SyncStatus = "local" | "sincronizando" | "sincronizado" | "error" | "sesion";
 
 type Issuer = {
@@ -343,6 +345,19 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("month");
   const [billingVisible, setBillingVisible] = useState(false);
   const [billingHistoryVisible, setBillingHistoryVisible] = useState(false);
+  const [invoiceSort, setInvoiceSort] = useState<{ key: InvoiceSortKey; direction: SortDirection }>({
+    key: "date",
+    direction: "desc"
+  });
+  const [invoiceFilters, setInvoiceFilters] = useState({
+    number: "",
+    dateFrom: "",
+    dateTo: "",
+    clientId: "",
+    status: "",
+    totalMin: "",
+    totalMax: ""
+  });
   const [ready, setReady] = useState(false);
   const [issuer, setIssuer] = useState<Issuer>(blankIssuer);
   const [issuerUpdatedAt, setIssuerUpdatedAt] = useState("");
@@ -697,10 +712,52 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   ]);
 
   const draftTotals = useMemo(() => totals(draft), [draft]);
-  const recentInvoices = useMemo(
-    () => [...invoices].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [invoices]
-  );
+  const recentInvoices = useMemo(() => {
+    const normalizedNumber = invoiceFilters.number.trim().toLocaleLowerCase("es");
+    const minTotal = invoiceFilters.totalMin === "" ? null : Number(invoiceFilters.totalMin);
+    const maxTotal = invoiceFilters.totalMax === "" ? null : Number(invoiceFilters.totalMax);
+
+    const filtered = invoices.filter((invoice) => {
+      const client = clients.find((item) => item.id === invoice.clientId);
+      const invoiceTotal = (() => {
+        const t = totals(invoice);
+        return money(t.base + t.vat - t.withholding);
+      })();
+
+      if (normalizedNumber && !invoice.number.toLocaleLowerCase("es").includes(normalizedNumber)) return false;
+      if (invoiceFilters.dateFrom && invoice.issueDate < invoiceFilters.dateFrom) return false;
+      if (invoiceFilters.dateTo && invoice.issueDate > invoiceFilters.dateTo) return false;
+      if (invoiceFilters.clientId && invoice.clientId !== invoiceFilters.clientId) return false;
+      if (invoiceFilters.status && invoice.status !== invoiceFilters.status) return false;
+      if (minTotal !== null && Number.isFinite(minTotal) && invoiceTotal < minTotal) return false;
+      if (maxTotal !== null && Number.isFinite(maxTotal) && invoiceTotal > maxTotal) return false;
+
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      const clientA = clients.find((item) => item.id === a.clientId)?.name || "";
+      const clientB = clients.find((item) => item.id === b.clientId)?.name || "";
+      const totalA = (() => {
+        const t = totals(a);
+        return money(t.base + t.vat - t.withholding);
+      })();
+      const totalB = (() => {
+        const t = totals(b);
+        return money(t.base + t.vat - t.withholding);
+      })();
+
+      let comparison = 0;
+      if (invoiceSort.key === "number") comparison = (a.number || "").localeCompare(b.number || "", "es", { numeric: true });
+      if (invoiceSort.key === "date") comparison = a.issueDate.localeCompare(b.issueDate);
+      if (invoiceSort.key === "client") comparison = clientA.localeCompare(clientB, "es");
+      if (invoiceSort.key === "status") comparison = a.status.localeCompare(b.status, "es");
+      if (invoiceSort.key === "total") comparison = totalA - totalB;
+
+      if (comparison === 0) comparison = a.createdAt.localeCompare(b.createdAt);
+      return invoiceSort.direction === "asc" ? comparison : -comparison;
+    });
+  }, [invoices, clients, invoiceFilters, invoiceSort]);
 
   const billedAmount = useMemo(() => {
     const now = new Date();
@@ -724,6 +781,68 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         return money(sum + t.base + t.vat - t.withholding);
       }, 0);
   }, [invoices, billingPeriod]);
+
+  const billingBreakdown = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    const periodInvoices = invoices.filter((invoice) => {
+      if (!invoiceCountsAsIssued(invoice)) return false;
+      if (billingPeriod === "total") return true;
+
+      const year = Number(invoice.issueDate.slice(0, 4));
+      if (year !== currentYear) return false;
+      if (billingPeriod === "year") return true;
+
+      return Number(invoice.issueDate.slice(5, 7)) === currentMonth;
+    });
+
+    let collected = 0;
+    let receivable = 0;
+
+    for (const invoice of periodInvoices) {
+      const t = totals(invoice);
+      const value = money(t.base + t.vat - t.withholding);
+      if (invoice.status === "Cobrada") collected = money(collected + value);
+      if (invoice.status === "Emitida") receivable = money(receivable + value);
+    }
+
+    const total = money(collected + receivable);
+    return {
+      collected,
+      receivable,
+      collectedPct: total > 0 ? collected / total : 0,
+      receivablePct: total > 0 ? receivable / total : 0
+    };
+  }, [invoices, billingPeriod]);
+
+  function toggleInvoiceSort(key: InvoiceSortKey) {
+    setInvoiceSort((current) =>
+      current.key === key
+        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: key === "date" || key === "total" ? "desc" : "asc" }
+    );
+  }
+
+  function sortMark(key: InvoiceSortKey) {
+    if (invoiceSort.key !== key) return "↕";
+    return invoiceSort.direction === "asc" ? "↑" : "↓";
+  }
+
+  function clearInvoiceFilters() {
+    setInvoiceFilters({
+      number: "",
+      dateFrom: "",
+      dateTo: "",
+      clientId: "",
+      status: "",
+      totalMin: "",
+      totalMax: ""
+    });
+  }
+
+  const hasInvoiceFilters = Object.values(invoiceFilters).some(Boolean);
 
   const monthlyBillingHistory = useMemo(() => {
     const groups = new Map<string, { year: number; month: number; invoices: number; total: number }>();
@@ -1313,6 +1432,18 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                     <strong>{billingVisible ? currency(billedAmount) : "•••••• €"}</strong>
                     <span>{billingVisible ? "Ocultar" : "Mostrar"}</span>
                   </button>
+                  <div className="billing-breakdown">
+                    <div>
+                      <span>Cobrado</span>
+                      <strong>{billingVisible ? currency(billingBreakdown.collected) : "•••• €"}</strong>
+                      <small>{Math.round(billingBreakdown.collectedPct * 100)}%</small>
+                    </div>
+                    <div>
+                      <span>Por cobrar</span>
+                      <strong>{billingVisible ? currency(billingBreakdown.receivable) : "•••• €"}</strong>
+                      <small>{Math.round(billingBreakdown.receivablePct * 100)}%</small>
+                    </div>
+                  </div>
                 </article>
                 <article className="stat-card">
                   <span>Facturas</span>
@@ -1379,17 +1510,99 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                   <div className="table-scroll">
                     <table className="data-table">
                       <thead>
-                        <tr>
-                          <th>Número</th>
-                          <th>Fecha</th>
-                          <th>Cliente</th>
-                          <th>Estado</th>
-                          <th className="right">Total</th>
+                        <tr className="sortable-head">
+                          <th><button onClick={() => toggleInvoiceSort("number")}>Número <span>{sortMark("number")}</span></button></th>
+                          <th><button onClick={() => toggleInvoiceSort("date")}>Fecha <span>{sortMark("date")}</span></button></th>
+                          <th><button onClick={() => toggleInvoiceSort("client")}>Cliente <span>{sortMark("client")}</span></button></th>
+                          <th><button onClick={() => toggleInvoiceSort("status")}>Estado <span>{sortMark("status")}</span></button></th>
+                          <th className="right"><button onClick={() => toggleInvoiceSort("total")}>Total <span>{sortMark("total")}</span></button></th>
                           <th>Observaciones</th>
+                          <th>{hasInvoiceFilters && <button className="clear-filters" onClick={clearInvoiceFilters}>Limpiar</button>}</th>
+                        </tr>
+                        <tr className="filter-row">
+                          <th>
+                            <input
+                              value={invoiceFilters.number}
+                              onChange={(e) => setInvoiceFilters((current) => ({ ...current, number: e.target.value }))}
+                              placeholder="Buscar nº"
+                              aria-label="Filtrar por número"
+                            />
+                          </th>
+                          <th>
+                            <div className="date-filter">
+                              <input
+                                type="date"
+                                value={invoiceFilters.dateFrom}
+                                onChange={(e) => setInvoiceFilters((current) => ({ ...current, dateFrom: e.target.value }))}
+                                aria-label="Fecha desde"
+                              />
+                              <input
+                                type="date"
+                                value={invoiceFilters.dateTo}
+                                onChange={(e) => setInvoiceFilters((current) => ({ ...current, dateTo: e.target.value }))}
+                                aria-label="Fecha hasta"
+                              />
+                            </div>
+                          </th>
+                          <th>
+                            <select
+                              value={invoiceFilters.clientId}
+                              onChange={(e) => setInvoiceFilters((current) => ({ ...current, clientId: e.target.value }))}
+                              aria-label="Filtrar por cliente"
+                            >
+                              <option value="">Todos</option>
+                              {[...clients]
+                                .sort((a, b) => a.name.localeCompare(b.name, "es"))
+                                .map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                            </select>
+                          </th>
+                          <th>
+                            <select
+                              value={invoiceFilters.status}
+                              onChange={(e) => setInvoiceFilters((current) => ({ ...current, status: e.target.value }))}
+                              aria-label="Filtrar por estado"
+                            >
+                              <option value="">Todos</option>
+                              <option value="Borrador">Borrador</option>
+                              <option value="Emitida">Emitida</option>
+                              <option value="Cobrada">Cobrada</option>
+                              <option value="Anulada">Anulada</option>
+                            </select>
+                          </th>
+                          <th>
+                            <div className="total-filter">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={invoiceFilters.totalMin}
+                                onChange={(e) => setInvoiceFilters((current) => ({ ...current, totalMin: e.target.value }))}
+                                placeholder="Mín."
+                                aria-label="Total mínimo"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={invoiceFilters.totalMax}
+                                onChange={(e) => setInvoiceFilters((current) => ({ ...current, totalMax: e.target.value }))}
+                                placeholder="Máx."
+                                aria-label="Total máximo"
+                              />
+                            </div>
+                          </th>
+                          <th></th>
                           <th></th>
                         </tr>
                       </thead>
                       <tbody>
+                        {recentInvoices.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="filtered-empty">
+                              No hay facturas que coincidan con estos filtros.
+                            </td>
+                          </tr>
+                        )}
                         {recentInvoices.map((invoice) => {
                           const client = clients.find((item) => item.id === invoice.clientId);
                           const t = totals(invoice);
