@@ -360,6 +360,43 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     return () => window.clearTimeout(timer);
   }, [issuer, clients, activities, invoices, savedConcepts, ready]);
 
+  useEffect(() => {
+    if (!ready || !remoteConfigured) return;
+
+    let cancelled = false;
+
+    async function refreshRemote() {
+      if (document.visibilityState === "hidden") return;
+
+      try {
+        const response = await fetch("/api/data", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !result.data || cancelled) return;
+
+        const remote = result.data;
+        if (remote.issuer) setIssuer((current) => ({ ...current, ...remote.issuer }));
+        if (remote.clients) setClients((current) => mergeById<Client>(current, remote.clients));
+        if (remote.activities) {
+          setActivities((current) => normalizeActivities(mergeById<ActivityPreset>(current, remote.activities)));
+        }
+        if (remote.invoices) setInvoices((current) => mergeById<Invoice>(current, remote.invoices));
+        if (remote.concepts) setSavedConcepts((current) => mergeById<SavedConcept>(current, remote.concepts));
+      } catch {
+        // Mantiene la copia local si no hay conexión.
+      }
+    }
+
+    const onFocus = () => void refreshRemote();
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(() => void refreshRemote(), 30000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
+  }, [ready, remoteConfigured]);
+
   const draftTotals = useMemo(() => totals(draft), [draft]);
   const recentInvoices = useMemo(
     () => [...invoices].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
