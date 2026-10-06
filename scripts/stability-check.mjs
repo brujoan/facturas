@@ -23,5 +23,7 @@ assert(fiscal.includes('invoiceCountsAsIssued(invoice)'), "Los borradores no deb
 assert(edge.includes('revision=eq.'), "La sincronización debe usar compare-and-swap por revisión.");
 assert(edge.includes('BACKUP_FAILED'), "Una escritura debe abortar si no se puede crear snapshot previo.");
 assert(edge.includes('DUPLICATE_INVOICE_NUMBER'), "El servidor debe bloquear números de factura duplicados.");
+assert(edge.includes('recurringExpenses'), "La sincronización fiscal debe conservar los gastos recurrentes.");
+assert(fiscal.includes('recurringExpenseId'), "Los gastos recurrentes deben materializarse sin duplicados.");
 
 console.log("Stability checks OK");

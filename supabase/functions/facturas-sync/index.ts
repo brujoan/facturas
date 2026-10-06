@@ -199,7 +199,12 @@ function mergeState(scope: string, current: unknown, incoming: unknown, now: str
 
   if (scope === "fiscal") {
     const deletedExpenseIds = mergeStringSet(oldState.deletedExpenseIds, newState.deletedExpenseIds);
+    const deletedRecurringExpenseIds = mergeStringSet(
+      oldState.deletedRecurringExpenseIds,
+      newState.deletedRecurringExpenseIds
+    );
     const deletedExpenses = new Set(deletedExpenseIds);
+    const deletedRecurring = new Set(deletedRecurringExpenseIds);
 
     return {
       ...oldState,
@@ -207,7 +212,14 @@ function mergeState(scope: string, current: unknown, incoming: unknown, now: str
       expenses: mergeByKey(oldState.expenses, newState.expenses, "id", now)
         .filter((row) => !deletedExpenses.has(String(row.id || ""))),
       taxRecords: mergeByKey(oldState.taxRecords, newState.taxRecords, "key", now),
-      deletedExpenseIds
+      recurringExpenses: mergeByKey(
+        oldState.recurringExpenses,
+        newState.recurringExpenses,
+        "id",
+        now
+      ).filter((row) => !deletedRecurring.has(String(row.id || ""))),
+      deletedExpenseIds,
+      deletedRecurringExpenseIds
     };
   }
 

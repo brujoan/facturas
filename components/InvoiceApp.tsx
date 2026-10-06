@@ -885,7 +885,9 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     let fiscalData = {
       expenses: parseLocal("facturas_expenses_v1"),
       taxRecords: parseLocal("facturas_tax_records_v1"),
-      deletedExpenseIds: parseLocal("facturas_deleted_expenses_v1")
+      deletedExpenseIds: parseLocal("facturas_deleted_expenses_v1"),
+      recurringExpenses: parseLocal("facturas_recurring_expenses_v1"),
+      deletedRecurringExpenseIds: parseLocal("facturas_deleted_recurring_expenses_v1")
     };
 
     try {
@@ -895,7 +897,10 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         fiscalData = {
           expenses: result.data.expenses || fiscalData.expenses,
           taxRecords: result.data.taxRecords || fiscalData.taxRecords,
-          deletedExpenseIds: result.data.deletedExpenseIds || fiscalData.deletedExpenseIds
+          deletedExpenseIds: result.data.deletedExpenseIds || fiscalData.deletedExpenseIds,
+          recurringExpenses: result.data.recurringExpenses || fiscalData.recurringExpenses,
+          deletedRecurringExpenseIds:
+            result.data.deletedRecurringExpenseIds || fiscalData.deletedRecurringExpenseIds
         };
       }
     } catch {
@@ -979,11 +984,27 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       const currentDeletedExpenseIds = (() => {
         try { return JSON.parse(localStorage.getItem("facturas_deleted_expenses_v1") || "[]"); } catch { return []; }
       })();
+      const currentRecurringExpenses = (() => {
+        try { return JSON.parse(localStorage.getItem("facturas_recurring_expenses_v1") || "[]"); } catch { return []; }
+      })();
+      const currentDeletedRecurringExpenseIds = (() => {
+        try { return JSON.parse(localStorage.getItem("facturas_deleted_recurring_expenses_v1") || "[]"); } catch { return []; }
+      })();
 
       const mergedDeletedExpenseIds = mergeIds(currentDeletedExpenseIds, fiscal.deletedExpenseIds || []);
+      const mergedDeletedRecurringExpenseIds = mergeIds(
+        currentDeletedRecurringExpenseIds,
+        fiscal.deletedRecurringExpenseIds || []
+      );
       const deletedSet = new Set(mergedDeletedExpenseIds);
       const mergedExpenses = mergeById<any>(currentExpenses, fiscal.expenses || [])
         .filter((item: any) => !deletedSet.has(item.id));
+
+      const deletedRecurringSet = new Set(mergedDeletedRecurringExpenseIds);
+      const mergedRecurringExpenses = mergeById<any>(
+        currentRecurringExpenses,
+        fiscal.recurringExpenses || []
+      ).filter((item: any) => !deletedRecurringSet.has(item.id));
 
       const recordMap = new Map<string, any>();
       currentRecords.forEach((item: any) => recordMap.set(item.key, item));
@@ -998,6 +1019,11 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       localStorage.setItem("facturas_expenses_v1", JSON.stringify(mergedExpenses));
       localStorage.setItem("facturas_tax_records_v1", JSON.stringify(mergedRecords));
       localStorage.setItem("facturas_deleted_expenses_v1", JSON.stringify(mergedDeletedExpenseIds));
+      localStorage.setItem("facturas_recurring_expenses_v1", JSON.stringify(mergedRecurringExpenses));
+      localStorage.setItem(
+        "facturas_deleted_recurring_expenses_v1",
+        JSON.stringify(mergedDeletedRecurringExpenseIds)
+      );
 
       const [mainResponse, fiscalResponse] = await Promise.all([
         fetch("/api/data", {
@@ -1022,7 +1048,9 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
           body: JSON.stringify({
             expenses: mergedExpenses,
             taxRecords: mergedRecords,
-            deletedExpenseIds: mergedDeletedExpenseIds
+            deletedExpenseIds: mergedDeletedExpenseIds,
+            recurringExpenses: mergedRecurringExpenses,
+            deletedRecurringExpenseIds: mergedDeletedRecurringExpenseIds
           })
         })
       ]);

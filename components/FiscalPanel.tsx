@@ -37,6 +37,23 @@ type Expense = {
   vatDeductiblePct: number;
   hasReceipt: boolean;
   notes: string;
+  recurringExpenseId?: string;
+  recurringMonth?: string;
+  updatedAt?: string;
+};
+
+type RecurringExpense = {
+  id: string;
+  supplier: string;
+  concept: string;
+  monthlyAmount: number;
+  vatRate: number;
+  irpfDeductiblePct: number;
+  vatDeductiblePct: number;
+  startMonth: string;
+  endMonth: string;
+  dayOfMonth: number;
+  active: boolean;
   updatedAt?: string;
 };
 
@@ -60,6 +77,8 @@ type Props = {
 const EXPENSES_KEY = "facturas_expenses_v1";
 const TAX_RECORDS_KEY = "facturas_tax_records_v1";
 const DELETED_EXPENSES_KEY = "facturas_deleted_expenses_v1";
+const RECURRING_EXPENSES_KEY = "facturas_recurring_expenses_v1";
+const DELETED_RECURRING_EXPENSES_KEY = "facturas_deleted_recurring_expenses_v1";
 const START_YEAR = 2026;
 
 function uid() {
@@ -158,6 +177,59 @@ function blankExpense(): Expense {
   };
 }
 
+function blankRecurringExpense(): RecurringExpense {
+  return {
+    id: "",
+    supplier: "Tesorería General de la Seguridad Social",
+    concept: "Cuota autónomos",
+    monthlyAmount: 200,
+    vatRate: 0,
+    irpfDeductiblePct: 100,
+    vatDeductiblePct: 0,
+    startMonth: "2026-08",
+    endMonth: "",
+    dayOfMonth: 30,
+    active: true
+  };
+}
+
+function monthKeysFrom(startMonth: string, endMonth: string) {
+  if (!startMonth || !endMonth || startMonth > endMonth) return [];
+  const [startYear, startMonthNumber] = startMonth.split("-").map(Number);
+  const [endYear, endMonthNumber] = endMonth.split("-").map(Number);
+  const values: string[] = [];
+
+  let year = startYear;
+  let month = startMonthNumber;
+  while (year < endYear || (year === endYear && month <= endMonthNumber)) {
+    values.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return values;
+}
+
+function monthKeysForQuarter(year: number, quarter: number) {
+  const startMonth = (quarter - 1) * 3 + 1;
+  return [0, 1, 2].map((offset) =>
+    `${year}-${String(startMonth + offset).padStart(2, "0")}`
+  );
+}
+
+function recurringApplies(item: RecurringExpense, monthKey: string) {
+  if (!item.active) return false;
+  if (item.startMonth && monthKey < item.startMonth) return false;
+  if (item.endMonth && monthKey > item.endMonth) return false;
+  return true;
+}
+
+function recurringExpenseId(templateId: string, monthKey: string) {
+  return `recurring-${templateId}-${monthKey}`;
+}
+
 function emptyRecord(year: number, quarter: number): TaxRecord {
   return {
     key: `${year}-Q${quarter}`,
@@ -215,7 +287,10 @@ export default function FiscalPanel({ invoices }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [records, setRecords] = useState<TaxRecord[]>([]);
   const [deletedExpenseIds, setDeletedExpenseIds] = useState<string[]>([]);
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+  const [deletedRecurringExpenseIds, setDeletedRecurringExpenseIds] = useState<string[]>([]);
   const [expenseDraft, setExpenseDraft] = useState<Expense>(blankExpense());
+  const [recurringDraft, setRecurringDraft] = useState<RecurringExpense>(blankRecurringExpense());
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -224,14 +299,21 @@ export default function FiscalPanel({ invoices }: Props) {
       let loadedExpenses: Expense[] = [];
       let loadedRecords: TaxRecord[] = [];
       let loadedDeletedExpenseIds: string[] = [];
+      let loadedRecurringExpenses: RecurringExpense[] = [];
+      let loadedDeletedRecurringExpenseIds: string[] = [];
 
       try {
         const savedExpenses = localStorage.getItem(EXPENSES_KEY);
         const savedRecords = localStorage.getItem(TAX_RECORDS_KEY);
         const savedDeleted = localStorage.getItem(DELETED_EXPENSES_KEY);
+        const savedRecurring = localStorage.getItem(RECURRING_EXPENSES_KEY);
+        const savedDeletedRecurring = localStorage.getItem(DELETED_RECURRING_EXPENSES_KEY);
+
         loadedExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
         loadedRecords = savedRecords ? JSON.parse(savedRecords) : [];
         loadedDeletedExpenseIds = savedDeleted ? JSON.parse(savedDeleted) : [];
+        loadedRecurringExpenses = savedRecurring ? JSON.parse(savedRecurring) : [];
+        loadedDeletedRecurringExpenseIds = savedDeletedRecurring ? JSON.parse(savedDeletedRecurring) : [];
       } catch {
         // Si falla la lectura local, intentamos recuperar desde Supabase.
       }
@@ -239,18 +321,27 @@ export default function FiscalPanel({ invoices }: Props) {
       const hadLocalData =
         loadedExpenses.length > 0 ||
         loadedRecords.length > 0 ||
-        loadedDeletedExpenseIds.length > 0;
+        loadedDeletedExpenseIds.length > 0 ||
+        loadedRecurringExpenses.length > 0 ||
+        loadedDeletedRecurringExpenseIds.length > 0;
 
       try {
         const response = await fetch("/api/fiscal", { cache: "no-store" });
         const result = await response.json();
         if (response.ok && result.configured) {
           const remote = result.data || {};
+
           loadedDeletedExpenseIds = [...new Set([
             ...(remote.deletedExpenseIds || []),
             ...loadedDeletedExpenseIds
           ])];
+          loadedDeletedRecurringExpenseIds = [...new Set([
+            ...(remote.deletedRecurringExpenseIds || []),
+            ...loadedDeletedRecurringExpenseIds
+          ])];
+
           const deletedSet = new Set(loadedDeletedExpenseIds);
+          const deletedRecurringSet = new Set(loadedDeletedRecurringExpenseIds);
 
           loadedExpenses = mergeByKey<Expense>(
             remote.expenses || [],
@@ -264,6 +355,12 @@ export default function FiscalPanel({ invoices }: Props) {
             (item) => item.key
           );
 
+          loadedRecurringExpenses = mergeByKey<RecurringExpense>(
+            remote.recurringExpenses || [],
+            loadedRecurringExpenses,
+            (item) => item.id
+          ).filter((item) => !deletedRecurringSet.has(item.id));
+
           if (hadLocalData) {
             const syncResponse = await fetch("/api/fiscal", {
               method: "PUT",
@@ -271,26 +368,43 @@ export default function FiscalPanel({ invoices }: Props) {
               body: JSON.stringify({
                 expenses: loadedExpenses,
                 taxRecords: loadedRecords,
-                deletedExpenseIds: loadedDeletedExpenseIds
+                deletedExpenseIds: loadedDeletedExpenseIds,
+                recurringExpenses: loadedRecurringExpenses,
+                deletedRecurringExpenseIds: loadedDeletedRecurringExpenseIds
               })
             });
+
             const synced = await syncResponse.json().catch(() => ({}));
             if (syncResponse.ok && synced.data) {
               loadedDeletedExpenseIds = [...new Set([
                 ...loadedDeletedExpenseIds,
                 ...(synced.data.deletedExpenseIds || [])
               ])];
+              loadedDeletedRecurringExpenseIds = [...new Set([
+                ...loadedDeletedRecurringExpenseIds,
+                ...(synced.data.deletedRecurringExpenseIds || [])
+              ])];
+
               const syncedDeleted = new Set(loadedDeletedExpenseIds);
+              const syncedDeletedRecurring = new Set(loadedDeletedRecurringExpenseIds);
+
               loadedExpenses = mergeByKey<Expense>(
                 synced.data.expenses || [],
                 loadedExpenses,
                 (item) => item.id
               ).filter((item) => !syncedDeleted.has(item.id));
+
               loadedRecords = mergeByKey<TaxRecord>(
                 synced.data.taxRecords || [],
                 loadedRecords,
                 (item) => item.key
               );
+
+              loadedRecurringExpenses = mergeByKey<RecurringExpense>(
+                synced.data.recurringExpenses || [],
+                loadedRecurringExpenses,
+                (item) => item.id
+              ).filter((item) => !syncedDeletedRecurring.has(item.id));
             }
           }
         }
@@ -301,6 +415,8 @@ export default function FiscalPanel({ invoices }: Props) {
       setExpenses(loadedExpenses);
       setRecords(loadedRecords);
       setDeletedExpenseIds(loadedDeletedExpenseIds);
+      setRecurringExpenses(loadedRecurringExpenses);
+      setDeletedRecurringExpenseIds(loadedDeletedRecurringExpenseIds);
       setReady(true);
     }
 
@@ -313,14 +429,23 @@ export default function FiscalPanel({ invoices }: Props) {
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
     localStorage.setItem(TAX_RECORDS_KEY, JSON.stringify(records));
     localStorage.setItem(DELETED_EXPENSES_KEY, JSON.stringify(deletedExpenseIds));
+    localStorage.setItem(RECURRING_EXPENSES_KEY, JSON.stringify(recurringExpenses));
+    localStorage.setItem(DELETED_RECURRING_EXPENSES_KEY, JSON.stringify(deletedRecurringExpenseIds));
 
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch("/api/fiscal", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expenses, taxRecords: records, deletedExpenseIds })
+          body: JSON.stringify({
+            expenses,
+            taxRecords: records,
+            deletedExpenseIds,
+            recurringExpenses,
+            deletedRecurringExpenseIds
+          })
         });
+
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.data) return;
 
@@ -328,28 +453,51 @@ export default function FiscalPanel({ invoices }: Props) {
           ...deletedExpenseIds,
           ...(result.data.deletedExpenseIds || [])
         ])];
+        const remoteDeletedRecurring = [...new Set([
+          ...deletedRecurringExpenseIds,
+          ...(result.data.deletedRecurringExpenseIds || [])
+        ])];
+
         const deletedSet = new Set(remoteDeleted);
+        const deletedRecurringSet = new Set(remoteDeletedRecurring);
+
         const nextExpenses = mergeByKey<Expense>(
           result.data.expenses || [],
           expenses,
           (item) => item.id
         ).filter((item) => !deletedSet.has(item.id));
+
         const nextRecords = mergeByKey<TaxRecord>(
           result.data.taxRecords || [],
           records,
           (item) => item.key
         );
 
+        const nextRecurringExpenses = mergeByKey<RecurringExpense>(
+          result.data.recurringExpenses || [],
+          recurringExpenses,
+          (item) => item.id
+        ).filter((item) => !deletedRecurringSet.has(item.id));
+
         if (!sameJson(remoteDeleted, deletedExpenseIds)) setDeletedExpenseIds(remoteDeleted);
+        if (!sameJson(remoteDeletedRecurring, deletedRecurringExpenseIds)) setDeletedRecurringExpenseIds(remoteDeletedRecurring);
         if (!sameJson(nextExpenses, expenses)) setExpenses(nextExpenses);
         if (!sameJson(nextRecords, records)) setRecords(nextRecords);
+        if (!sameJson(nextRecurringExpenses, recurringExpenses)) setRecurringExpenses(nextRecurringExpenses);
       } catch {
         // La copia local sigue siendo el respaldo inmediato del dispositivo.
       }
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [expenses, records, deletedExpenseIds, ready]);
+  }, [
+    expenses,
+    records,
+    deletedExpenseIds,
+    recurringExpenses,
+    deletedRecurringExpenseIds,
+    ready
+  ]);
 
   useEffect(() => {
     if (!ready) return;
@@ -368,21 +516,37 @@ export default function FiscalPanel({ invoices }: Props) {
           ...deletedExpenseIds,
           ...(result.data.deletedExpenseIds || [])
         ])];
+        const remoteDeletedRecurring = [...new Set([
+          ...deletedRecurringExpenseIds,
+          ...(result.data.deletedRecurringExpenseIds || [])
+        ])];
+
         const deletedSet = new Set(remoteDeleted);
+        const deletedRecurringSet = new Set(remoteDeletedRecurring);
+
         const nextExpenses = mergeByKey<Expense>(
           result.data.expenses || [],
           expenses,
           (item) => item.id
         ).filter((item) => !deletedSet.has(item.id));
+
         const nextRecords = mergeByKey<TaxRecord>(
           result.data.taxRecords || [],
           records,
           (item) => item.key
         );
 
+        const nextRecurringExpenses = mergeByKey<RecurringExpense>(
+          result.data.recurringExpenses || [],
+          recurringExpenses,
+          (item) => item.id
+        ).filter((item) => !deletedRecurringSet.has(item.id));
+
         if (!sameJson(remoteDeleted, deletedExpenseIds)) setDeletedExpenseIds(remoteDeleted);
+        if (!sameJson(remoteDeletedRecurring, deletedRecurringExpenseIds)) setDeletedRecurringExpenseIds(remoteDeletedRecurring);
         if (!sameJson(nextExpenses, expenses)) setExpenses(nextExpenses);
         if (!sameJson(nextRecords, records)) setRecords(nextRecords);
+        if (!sameJson(nextRecurringExpenses, recurringExpenses)) setRecurringExpenses(nextRecurringExpenses);
       } catch {
         // Conserva los datos locales si no hay conexión.
       }
@@ -397,7 +561,63 @@ export default function FiscalPanel({ invoices }: Props) {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);
     };
-  }, [ready, deletedExpenseIds, expenses, records]);
+  }, [
+    ready,
+    deletedExpenseIds,
+    expenses,
+    records,
+    recurringExpenses,
+    deletedRecurringExpenseIds
+  ]);
+
+  useEffect(() => {
+    if (!ready || recurringExpenses.length === 0) return;
+
+    const today = todayISO();
+    const currentMonth = today.slice(0, 7);
+    const currentDay = Number(today.slice(8, 10));
+    const deletedSet = new Set(deletedExpenseIds);
+    const existingIds = new Set(expenses.map((expense) => expense.id));
+    const additions: Expense[] = [];
+
+    for (const recurring of recurringExpenses) {
+      if (!recurring.active || !recurring.startMonth) continue;
+
+      const endMonth =
+        recurring.endMonth && recurring.endMonth < currentMonth
+          ? recurring.endMonth
+          : currentMonth;
+
+      for (const monthKey of monthKeysFrom(recurring.startMonth, endMonth)) {
+        if (monthKey === currentMonth && currentDay < Number(recurring.dayOfMonth || 1)) continue;
+
+        const id = recurringExpenseId(recurring.id, monthKey);
+        if (deletedSet.has(id) || existingIds.has(id)) continue;
+
+        const [expenseYear, expenseMonth] = monthKey.split("-").map(Number);
+        const lastDay = new Date(expenseYear, expenseMonth, 0).getDate();
+        const day = Math.max(1, Math.min(lastDay, Number(recurring.dayOfMonth || 1)));
+        additions.push({
+          id,
+          date: `${monthKey}-${String(day).padStart(2, "0")}`,
+          supplier: recurring.supplier,
+          taxId: "",
+          concept: recurring.concept,
+          base: Number(recurring.monthlyAmount || 0),
+          vatRate: Number(recurring.vatRate || 0),
+          irpfDeductiblePct: Number(recurring.irpfDeductiblePct || 0),
+          vatDeductiblePct: Number(recurring.vatDeductiblePct || 0),
+          hasReceipt: false,
+          notes: "Generado automáticamente desde gasto recurrente.",
+          recurringExpenseId: recurring.id,
+          recurringMonth: monthKey,
+          updatedAt: nowISO()
+        });
+      }
+    }
+
+    if (additions.length) setExpenses((current) => [...current, ...additions]);
+  }, [ready, recurringExpenses, expenses, deletedExpenseIds]);
 
   const availableYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -449,6 +669,11 @@ export default function FiscalPanel({ invoices }: Props) {
 
   const quarterCollectedInvoices = useMemo(
     () => quarterInvoices.filter((invoice) => invoice.status === "Cobrada"),
+    [quarterInvoices]
+  );
+
+  const quarterReceivableInvoices = useMemo(
+    () => quarterInvoices.filter((invoice) => invoice.status === "Emitida"),
     [quarterInvoices]
   );
 
@@ -577,11 +802,80 @@ export default function FiscalPanel({ invoices }: Props) {
 
   const vatForPocket = Math.max(0, quarterStats.vatResult);
 
-  const liquidAvailable = money(
-    quarterStats.collectedCash -
+  const receivableCash = useMemo(() => {
+    let total = 0;
+    for (const invoice of quarterReceivableInvoices) {
+      for (const line of invoice.lines) {
+        const base = lineBase(line);
+        total +=
+          base +
+          base * (Number(line.vat || 0) / 100) -
+          base * (Number(line.withholding || 0) / 100);
+      }
+    }
+    return money(total);
+  }, [quarterReceivableInvoices]);
+
+  const recurringQuarterStats = useMemo(() => {
+    const quarterMonths = monthKeysForQuarter(year, quarter);
+    const deletedExpenseSet = new Set(deletedExpenseIds);
+    const generatedIds = new Set(expenses.map((expense) => expense.id));
+
+    let plannedCash = 0;
+    let futureCash = 0;
+
+    for (const recurring of recurringExpenses) {
+      for (const monthKey of quarterMonths) {
+        if (!recurringApplies(recurring, monthKey)) continue;
+
+        const monthlyCash = money(
+          Number(recurring.monthlyAmount || 0) *
+          (1 + Number(recurring.vatRate || 0) / 100)
+        );
+        plannedCash = money(plannedCash + monthlyCash);
+
+        const generatedId = recurringExpenseId(recurring.id, monthKey);
+        if (!generatedIds.has(generatedId) && !deletedExpenseSet.has(generatedId)) {
+          futureCash = money(futureCash + monthlyCash);
+        }
+      }
+    }
+
+    const registeredCash = money(
+      quarterExpenses
+        .filter((expense) => Boolean(expense.recurringExpenseId))
+        .reduce(
+          (sum, expense) =>
+            sum + Number(expense.base || 0) * (1 + Number(expense.vatRate || 0) / 100),
+          0
+        )
+    );
+
+    return {
+      plannedCash,
+      registeredCash,
+      futureCash,
+      variableCash: money(quarterStats.expenseCash - registeredCash)
+    };
+  }, [
+    recurringExpenses,
+    deletedExpenseIds,
+    expenses,
+    quarterExpenses,
+    quarterStats.expenseCash,
+    year,
+    quarter
+  ]);
+
+  const taxReserve = money(vatForPocket + model130ForPocket);
+  const cashBeforeTax = money(quarterStats.collectedCash - quarterStats.expenseCash);
+  const liquidAvailable = money(cashBeforeTax - taxReserve);
+  const liquidForecast = money(
+    quarterStats.collectedCash +
+    receivableCash -
     quarterStats.expenseCash -
-    vatForPocket -
-    model130ForPocket
+    recurringQuarterStats.futureCash -
+    taxReserve
   );
 
   const missingReceipts = quarterExpenses.filter((expense) => !expense.hasReceipt).length;
@@ -657,6 +951,52 @@ export default function FiscalPanel({ invoices }: Props) {
     setDeletedExpenseIds((current) => current.includes(expense.id) ? current : [...current, expense.id]);
     if (expenseDraft.id === expense.id) setExpenseDraft(blankExpense());
     flash("Gasto eliminado.");
+  }
+
+  function saveRecurringExpense() {
+    if (!recurringDraft.concept.trim() || !recurringDraft.supplier.trim() || !recurringDraft.startMonth) {
+      return flash("Concepto, proveedor y mes de inicio son obligatorios.");
+    }
+    if (Number(recurringDraft.monthlyAmount) <= 0) return flash("El importe mensual debe ser mayor que 0.");
+    if (Number(recurringDraft.vatRate) < 0 || Number(recurringDraft.vatRate) > 100) return flash("Revisa el IVA del gasto recurrente.");
+    if (Number(recurringDraft.irpfDeductiblePct) < 0 || Number(recurringDraft.irpfDeductiblePct) > 100) return flash("El deducible IRPF debe estar entre 0% y 100%.");
+    if (Number(recurringDraft.vatDeductiblePct) < 0 || Number(recurringDraft.vatDeductiblePct) > 100) return flash("El deducible IVA debe estar entre 0% y 100%.");
+    if (Number(recurringDraft.dayOfMonth) < 1 || Number(recurringDraft.dayOfMonth) > 31) return flash("El día de cargo debe estar entre 1 y 31.");
+    if (recurringDraft.endMonth && recurringDraft.endMonth < recurringDraft.startMonth) return flash("El mes final no puede ser anterior al inicial.");
+
+    const stamp = nowISO();
+    const item: RecurringExpense = {
+      ...recurringDraft,
+      id: recurringDraft.id || uid(),
+      supplier: recurringDraft.supplier.trim(),
+      concept: recurringDraft.concept.trim(),
+      monthlyAmount: Number(recurringDraft.monthlyAmount || 0),
+      vatRate: Number(recurringDraft.vatRate || 0),
+      irpfDeductiblePct: Number(recurringDraft.irpfDeductiblePct || 0),
+      vatDeductiblePct: Number(recurringDraft.vatDeductiblePct || 0),
+      dayOfMonth: Number(recurringDraft.dayOfMonth || 1),
+      updatedAt: stamp
+    };
+
+    setRecurringExpenses((current) =>
+      recurringDraft.id
+        ? current.map((expense) => expense.id === item.id ? item : expense)
+        : [...current, item]
+    );
+    setRecurringDraft(blankRecurringExpense());
+    flash(recurringDraft.id ? "Gasto recurrente actualizado." : "Gasto recurrente añadido.");
+  }
+
+  function editRecurringExpense(item: RecurringExpense) {
+    setRecurringDraft({ ...item });
+  }
+
+  function deleteRecurringExpense(item: RecurringExpense) {
+    if (!window.confirm(`¿Eliminar el gasto recurrente “${item.concept}”? Los meses ya registrados se conservarán.`)) return;
+    setRecurringExpenses((current) => current.filter((expense) => expense.id !== item.id));
+    setDeletedRecurringExpenseIds((current) => current.includes(item.id) ? current : [...current, item.id]);
+    if (recurringDraft.id === item.id) setRecurringDraft(blankRecurringExpense());
+    flash("Gasto recurrente eliminado.");
   }
 
   function updateRecord(patch: Partial<TaxRecord>) {
@@ -742,26 +1082,73 @@ export default function FiscalPanel({ invoices }: Props) {
         })}
       </div>
 
-      <div className="fiscal-kpis">
+      <div className="fiscal-block-heading">
+        <div>
+          <p className="eyebrow">Caja</p>
+          <h2>Qué dinero tienes y qué queda pendiente</h2>
+        </div>
+      </div>
+
+      <div className="fiscal-kpis cash-overview">
+        <article className="cash-kpi">
+          <span>Cobrado</span>
+          <strong>{currency(quarterStats.collectedCash)}</strong>
+          <small>{quarterCollectedInvoices.length} facturas cobradas</small>
+        </article>
+        <article>
+          <span>Por cobrar</span>
+          <strong>{currency(receivableCash)}</strong>
+          <small>{quarterReceivableInvoices.length} facturas emitidas</small>
+        </article>
+        <article>
+          <span>Gastos registrados</span>
+          <strong>{currency(quarterStats.expenseCash)}</strong>
+          <small>Importe pagado/registrado con IVA</small>
+        </article>
+        <article>
+          <span>Reserva fiscal</span>
+          <strong>{currency(taxReserve)}</strong>
+          <small>303 + 130 orientativos</small>
+        </article>
+        <article className={`liquid-kpi ${liquidAvailable < 0 ? "negative" : ""}`}>
+          <span>Líquido hoy</span>
+          <strong>{currency(liquidAvailable)}</strong>
+          <small>Cobrado − gastos − reserva fiscal</small>
+        </article>
+        <article className="forecast-kpi">
+          <span>Líquido al cobrar todo</span>
+          <strong>{currency(liquidForecast)}</strong>
+          <small>Incluye pendiente de cobro y recurrentes previstos</small>
+        </article>
+      </div>
+
+      <div className="cash-explanation">
+        <span><b>Líquido hoy</b> puede ser negativo si todavía tienes facturas sin cobrar pero ya estás reservando los impuestos del trimestre.</span>
+        <span><b>Líquido al cobrar todo</b> es la previsión si cobras las facturas emitidas y pagas los gastos recurrentes pendientes de este trimestre.</span>
+      </div>
+
+      <div className="fiscal-block-heading">
+        <div>
+          <p className="eyebrow">Fiscalidad</p>
+          <h2>Impuestos y rendimiento</h2>
+        </div>
+      </div>
+
+      <div className="fiscal-kpis tax-overview">
         <article>
           <span>Facturado · base</span>
           <strong>{currency(quarterStats.incomeBase)}</strong>
           <small>{quarterInvoices.length} facturas emitidas/cobradas</small>
         </article>
-        <article className="cash-kpi">
-          <span>Cobrado en cuenta</span>
-          <strong>{currency(quarterStats.collectedCash)}</strong>
-          <small>{quarterCollectedInvoices.length} facturas marcadas Cobrada</small>
-        </article>
         <article>
           <span>IVA repercutido</span>
           <strong>{currency(quarterStats.vatOutput)}</strong>
-          <small>Facturas emitidas</small>
+          <small>IVA cobrado a clientes</small>
         </article>
         <article>
           <span>IVA deducible</span>
           <strong>{currency(quarterStats.vatInput)}</strong>
-          <small>{quarterExpenses.length} gastos</small>
+          <small>{quarterExpenses.length} gastos registrados</small>
         </article>
         <article>
           <span>303 estimado</span>
@@ -774,26 +1161,45 @@ export default function FiscalPanel({ invoices }: Props) {
           <small>{percent(retentionRatio)} de base con retención</small>
         </article>
         <article>
+          <span>130 estimado</span>
+          <strong>{currency(model130ForPocket)}</strong>
+          <small>Pago fraccionado orientativo</small>
+        </article>
+        <article className="performance-kpi">
           <span>Rendimiento fiscal aprox.</span>
           <strong>{currency(quarterStats.net)}</strong>
           <small>Base facturada − gasto deducible</small>
         </article>
-        <article className="liquid-kpi">
-          <span>Líquido disponible estimado</span>
-          <strong>{currency(liquidAvailable)}</strong>
-          <small>Cobrado − gastos − 303 − 130</small>
-        </article>
       </div>
 
-      <div className="fiscal-money-guide">
-        <strong>Qué significa cada cifra</strong>
+      <div className="fiscal-block-heading">
         <div>
-          <span><b>Facturado</b> es la base de las facturas emitidas/cobradas del trimestre.</span>
-          <span><b>Cobrado</b> es el total neto de las facturas del trimestre que has marcado como Cobrada (base + IVA − IRPF).</span>
-          <span><b>Rendimiento</b> es el beneficio fiscal aproximado: base facturada − gastos deducibles.</span>
-          <span><b>Líquido disponible</b> estima lo que podrías considerar “para ti”: cobrado − gasto total registrado − IVA a ingresar − 130 estimado.</span>
+          <p className="eyebrow">Gastos</p>
+          <h2>Variables y recurrentes</h2>
         </div>
-        <small>El líquido es orientativo: asume que los gastos registrados están pagados y que “Cobrada” refleja dinero ya recibido. No sustituye al saldo real del banco.</small>
+      </div>
+
+      <div className="fiscal-kpis expense-overview">
+        <article>
+          <span>Gastos variables</span>
+          <strong>{currency(recurringQuarterStats.variableCash)}</strong>
+          <small>Registrados sin recurrentes</small>
+        </article>
+        <article className="recurring-kpi">
+          <span>Recurrentes contabilizados</span>
+          <strong>{currency(recurringQuarterStats.registeredCash)}</strong>
+          <small>Ya generados en este trimestre</small>
+        </article>
+        <article>
+          <span>Recurrentes pendientes</span>
+          <strong>{currency(recurringQuarterStats.futureCash)}</strong>
+          <small>Programados y todavía no generados</small>
+        </article>
+        <article>
+          <span>Gasto previsto total</span>
+          <strong>{currency(money(quarterStats.expenseCash + recurringQuarterStats.futureCash))}</strong>
+          <small>Registrado + recurrente pendiente</small>
+        </article>
       </div>
 
       <div className="tax-model-grid">
@@ -850,6 +1256,96 @@ export default function FiscalPanel({ invoices }: Props) {
         </article>
       </div>
 
+      <div className="panel recurring-expenses-panel">
+        <div className="section-title">
+          <div>
+            <h2>Gastos recurrentes</h2>
+            <p className="muted">Configura cuotas o suscripciones mensuales. La app crea el gasto automáticamente al llegar el día de cargo y evita duplicados.</p>
+          </div>
+        </div>
+
+        <div className="recurring-expense-layout">
+          <div>
+            <div className="form-grid three recurring-form">
+              <label>Concepto
+                <input value={recurringDraft.concept} onChange={(e) => setRecurringDraft({ ...recurringDraft, concept: e.target.value })} />
+              </label>
+              <label>Proveedor
+                <input value={recurringDraft.supplier} onChange={(e) => setRecurringDraft({ ...recurringDraft, supplier: e.target.value })} />
+              </label>
+              <label>Importe mensual
+                <input type="number" min="0" step="0.01" value={recurringDraft.monthlyAmount} onChange={(e) => setRecurringDraft({ ...recurringDraft, monthlyAmount: Number(e.target.value) })} />
+              </label>
+              <label>Mes de inicio
+                <input type="month" value={recurringDraft.startMonth} onChange={(e) => setRecurringDraft({ ...recurringDraft, startMonth: e.target.value })} />
+              </label>
+              <label>Mes final · opcional
+                <input type="month" value={recurringDraft.endMonth} onChange={(e) => setRecurringDraft({ ...recurringDraft, endMonth: e.target.value })} />
+              </label>
+              <label>Día aprox. de cargo
+                <input type="number" min="1" max="31" value={recurringDraft.dayOfMonth} onChange={(e) => setRecurringDraft({ ...recurringDraft, dayOfMonth: Number(e.target.value) })} />
+              </label>
+              <label>IVA %
+                <input type="number" min="0" max="100" step="0.01" value={recurringDraft.vatRate} onChange={(e) => setRecurringDraft({ ...recurringDraft, vatRate: Number(e.target.value) })} />
+              </label>
+              <label>Deducible IRPF %
+                <input type="number" min="0" max="100" value={recurringDraft.irpfDeductiblePct} onChange={(e) => setRecurringDraft({ ...recurringDraft, irpfDeductiblePct: Number(e.target.value) })} />
+              </label>
+              <label>Deducible IVA %
+                <input type="number" min="0" max="100" value={recurringDraft.vatDeductiblePct} onChange={(e) => setRecurringDraft({ ...recurringDraft, vatDeductiblePct: Number(e.target.value) })} />
+              </label>
+              <label className="receipt-check recurring-active">
+                <input type="checkbox" checked={recurringDraft.active} onChange={(e) => setRecurringDraft({ ...recurringDraft, active: e.target.checked })} />
+                Activo
+              </label>
+            </div>
+
+            <div className="recurring-hint">
+              <strong>Cuota de autónomos</strong>
+              <span>Te la dejo preparada con 200 €/mes, IVA 0% y 100% deducible en IRPF. Ajusta el importe real antes de guardarla.</span>
+            </div>
+
+            <div className="client-form-actions">
+              <button className="button primary" onClick={saveRecurringExpense}>
+                {recurringDraft.id ? "Guardar recurrente" : "Añadir recurrente"}
+              </button>
+              {recurringDraft.id && (
+                <button className="button secondary" onClick={() => setRecurringDraft(blankRecurringExpense())}>Cancelar</button>
+              )}
+            </div>
+          </div>
+
+          <div className="recurring-list">
+            {recurringExpenses.length === 0 && <p className="muted">Todavía no hay gastos recurrentes configurados.</p>}
+            {recurringExpenses
+              .slice()
+              .sort((a, b) => a.concept.localeCompare(b.concept, "es"))
+              .map((item) => (
+                <article key={item.id}>
+                  <div className="recurring-main">
+                    <div>
+                      <strong>{item.concept}</strong>
+                      <span>{item.supplier}</span>
+                    </div>
+                    <strong>{currency(item.monthlyAmount)}/mes</strong>
+                  </div>
+                  <div className="expense-meta">
+                    <span>{item.startMonth} → {item.endMonth || "sin fin"}</span>
+                    <span>Día {item.dayOfMonth}</span>
+                    <span>IVA {item.vatRate}%</span>
+                    <span>IRPF ded. {item.irpfDeductiblePct}%</span>
+                    <span className={item.active ? "receipt-ok" : "receipt-missing"}>{item.active ? "Activo" : "Pausado"}</span>
+                  </div>
+                  <div className="expense-actions">
+                    <button className="button small secondary" onClick={() => editRecurringExpense(item)}>Editar</button>
+                    <button className="danger-link" onClick={() => deleteRecurringExpense(item)}>Eliminar</button>
+                  </div>
+                </article>
+              ))}
+          </div>
+        </div>
+      </div>
+
       <div className="split-layout fiscal-expense-layout">
         <div className="panel">
           <div className="section-title">
@@ -899,7 +1395,7 @@ export default function FiscalPanel({ invoices }: Props) {
                 <article className="expense-card" key={expense.id}>
                   <div className="expense-main">
                     <div>
-                      <strong>{expense.concept}</strong>
+                      <strong>{expense.concept} {expense.recurringExpenseId && <span className="expense-badge">Recurrente</span>}</strong>
                       <span>{expense.supplier} · {expense.date}</span>
                     </div>
                     <strong>{currency(expense.base + vatAmount)}</strong>

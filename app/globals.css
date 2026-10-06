@@ -1229,3 +1229,138 @@ h3 { margin-bottom: 8px; }
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Panel fiscal v0.6 */
+.fiscal-block-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 22px 0 10px;
+}
+.fiscal-block-heading h2 {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+.fiscal-block-heading .eyebrow { margin: 0; }
+
+.cash-overview {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.tax-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.expense-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.fiscal-kpis .forecast-kpi {
+  border-color: rgba(37, 99, 235, .18);
+  background: #f7faff;
+}
+.fiscal-kpis .recurring-kpi {
+  border-color: rgba(139, 92, 246, .16);
+  background: #faf8ff;
+}
+.fiscal-kpis .liquid-kpi.negative {
+  border-color: rgba(220, 38, 38, .18);
+  background: #fff8f8;
+}
+.fiscal-kpis .liquid-kpi.negative strong { color: #b42318; }
+.fiscal-kpis .performance-kpi {
+  border-color: rgba(15, 118, 110, .14);
+  background: #f8fffd;
+}
+
+.cash-explanation {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: -6px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbfc;
+}
+.cash-explanation span {
+  color: #667085;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.cash-explanation b { color: var(--text); }
+
+.recurring-expenses-panel { margin-bottom: 18px; }
+.recurring-expense-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .85fr);
+  gap: 20px;
+}
+.recurring-form .receipt-check {
+  grid-column: auto;
+  align-self: end;
+}
+.recurring-hint {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: #f6f8fb;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.recurring-hint strong,
+.recurring-hint span { display: block; }
+.recurring-hint span { margin-top: 3px; color: var(--muted); }
+
+.recurring-list { display: grid; gap: 9px; align-content: start; }
+.recurring-list article {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbfc;
+}
+.recurring-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.recurring-main span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.recurring-main > strong {
+  white-space: nowrap;
+  font-size: 12px;
+}
+.expense-badge {
+  display: inline-flex !important;
+  margin: 0 0 0 6px !important;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f1edff;
+  color: #6941c6 !important;
+  font-size: 8px !important;
+  vertical-align: middle;
+}
+
+@media (max-width: 1200px) {
+  .cash-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tax-overview,
+  .expense-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recurring-expense-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .cash-overview,
+  .tax-overview,
+  .expense-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cash-explanation { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .cash-overview,
+  .tax-overview,
+  .expense-overview { grid-template-columns: 1fr; }
+}
