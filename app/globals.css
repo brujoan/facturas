@@ -692,7 +692,7 @@ h3 { margin-bottom: 8px; }
 
 .fiscal-kpis {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -1074,3 +1074,50 @@ h3 { margin-bottom: 8px; }
   border: 1px solid rgba(255,255,255,.08);
 }
 .fiscal-alert.overdue strong { color: #ffd0d0; }
+
+
+/* Lectura rápida de dinero real vs. rendimiento fiscal */
+.fiscal-kpis .cash-kpi {
+  border-color: rgba(16, 185, 129, .18);
+  background: #f6fffb;
+}
+.fiscal-kpis .liquid-kpi {
+  border-color: rgba(37, 99, 235, .2);
+  background: #f7faff;
+}
+.fiscal-kpis .liquid-kpi strong { font-size: 20px; }
+
+.fiscal-money-guide {
+  margin: -6px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #fafbfc;
+}
+.fiscal-money-guide > strong {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 11px;
+}
+.fiscal-money-guide > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 18px;
+}
+.fiscal-money-guide span {
+  color: #596475;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.fiscal-money-guide b { color: var(--text); }
+.fiscal-money-guide > small {
+  display: block;
+  margin-top: 10px;
+  color: #8b95a3;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .fiscal-money-guide > div { grid-template-columns: 1fr; }
+}
