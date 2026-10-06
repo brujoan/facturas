@@ -5,6 +5,7 @@ import FiscalPanel from "@/components/FiscalPanel";
 
 type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
+type InvoiceMode = "normal" | "monthly";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
 
 type Issuer = {
@@ -43,6 +44,7 @@ type InvoiceLine = {
   id: string;
   activityId: string;
   description: string;
+  serviceDate?: string;
   quantity: number;
   unitPrice: number;
   vat: number;
@@ -65,6 +67,9 @@ type Invoice = {
   series: string;
   issueDate: string;
   operationDate: string;
+  invoiceMode?: InvoiceMode;
+  periodFrom?: string;
+  periodTo?: string;
   dueDate: string;
   clientId: string;
   lines: InvoiceLine[];
@@ -163,11 +168,21 @@ function dateISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function monthRange(date: string) {
+  const safeDate = date || dateISO();
+  const [year, month] = safeDate.split("-").map(Number);
+  const first = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const last = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  return { first, last };
+}
+
 function emptyLine(activity?: ActivityPreset): InvoiceLine {
   return {
     id: uid(),
     activityId: activity?.id || "",
     description: "",
+    serviceDate: "",
     quantity: 1,
     unitPrice: 0,
     vat: activity?.vat ?? 21,
@@ -183,6 +198,9 @@ function emptyInvoice(activity?: ActivityPreset): Invoice {
     series: String(new Date().getFullYear()),
     issueDate: today,
     operationDate: today,
+    invoiceMode: "normal",
+    periodFrom: "",
+    periodTo: "",
     dueDate: today,
     clientId: "",
     lines: [emptyLine(activity)],
@@ -664,6 +682,10 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     if (!draft.clientId) return flash("Selecciona un cliente.");
     if (!draft.lines.some((line) => line.description.trim())) return flash("Añade al menos un concepto.");
     if (!issuer.fiscalName || !issuer.taxId) return flash("Completa tus datos fiscales en Configuración.");
+    if ((draft.invoiceMode || "normal") === "monthly") {
+      if (!draft.periodFrom || !draft.periodTo) return flash("Indica el periodo facturado desde/hasta.");
+      if (draft.periodFrom > draft.periodTo) return flash("La fecha inicial del periodo no puede ser posterior a la final.");
+    }
 
     const number = draft.number.trim() || nextNumber(draft.series, invoices);
     const saved: Invoice = {
@@ -1019,9 +1041,42 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                       <label>Fecha emisión
                         <input type="date" value={draft.issueDate} onChange={(e) => setDraft({ ...draft, issueDate: e.target.value })} />
                       </label>
-                      <label>Fecha operación
-                        <input type="date" value={draft.operationDate} onChange={(e) => setDraft({ ...draft, operationDate: e.target.value })} />
+                      <label>Tipo de factura
+                        <select
+                          value={draft.invoiceMode || "normal"}
+                          onChange={(e) => {
+                            const invoiceMode = e.target.value as InvoiceMode;
+                            if (invoiceMode === "monthly") {
+                              const range = monthRange(draft.issueDate);
+                              setDraft({
+                                ...draft,
+                                invoiceMode,
+                                periodFrom: draft.periodFrom || range.first,
+                                periodTo: draft.periodTo || range.last
+                              });
+                            } else {
+                              setDraft({ ...draft, invoiceMode });
+                            }
+                          }}
+                        >
+                          <option value="normal">Normal</option>
+                          <option value="monthly">Mensual / recapitulativa</option>
+                        </select>
                       </label>
+                      {(draft.invoiceMode || "normal") === "normal" ? (
+                        <label>Fecha operación
+                          <input type="date" value={draft.operationDate} onChange={(e) => setDraft({ ...draft, operationDate: e.target.value })} />
+                        </label>
+                      ) : (
+                        <>
+                          <label>Periodo desde
+                            <input type="date" value={draft.periodFrom || ""} onChange={(e) => setDraft({ ...draft, periodFrom: e.target.value })} />
+                          </label>
+                          <label>Periodo hasta
+                            <input type="date" value={draft.periodTo || ""} onChange={(e) => setDraft({ ...draft, periodTo: e.target.value })} />
+                          </label>
+                        </>
+                      )}
                       <label>Vencimiento
                         <input type="date" value={draft.dueDate} onChange={(e) => setDraft({ ...draft, dueDate: e.target.value })} />
                       </label>
@@ -1056,12 +1111,24 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                       ))}
                     </datalist>
 
-                    <div className="line-head">
+                    <div className={`line-head ${(draft.invoiceMode || "normal") === "monthly" ? "with-service-date" : ""}`}>
+                      {(draft.invoiceMode || "normal") === "monthly" && <span>Fecha</span>}
                       <span>Actividad / concepto</span><span>Cant.</span><span>Precio</span><span>IVA %</span><span>IRPF %</span><span>Total base</span><span></span>
                     </div>
 
                     {draft.lines.map((line) => (
-                      <div className="invoice-line" key={line.id}>
+                      <div className={`invoice-line ${(draft.invoiceMode || "normal") === "monthly" ? "with-service-date" : ""}`} key={line.id}>
+                        {(draft.invoiceMode || "normal") === "monthly" && (
+                          <input
+                            className="service-date-input"
+                            type="date"
+                            value={line.serviceDate || ""}
+                            min={draft.periodFrom || undefined}
+                            max={draft.periodTo || undefined}
+                            onChange={(e) => updateLine(line.id, { serviceDate: e.target.value })}
+                            aria-label="Fecha del servicio"
+                          />
+                        )}
                         <div className="line-description">
                           <select value={line.activityId} onChange={(e) => chooseActivity(line.id, e.target.value)}>
                             <option value="">Sin actividad predefinida</option>
@@ -1399,7 +1466,11 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                 <div className="print-brand">FACTURA</div>
                 <h1>{preview.number}</h1>
                 <p>Fecha de emisión: {preview.issueDate}</p>
-                {preview.operationDate && <p>Fecha de operación: {preview.operationDate}</p>}
+                {(preview.invoiceMode || "normal") === "monthly" ? (
+                  <p>Periodo facturado: {preview.periodFrom || "—"} a {preview.periodTo || "—"}</p>
+                ) : (
+                  preview.operationDate && <p>Fecha de operación: {preview.operationDate}</p>
+                )}
               </div>
               <div className="issuer-print">
                 <strong>{issuer.fiscalName}</strong>
@@ -1419,10 +1490,16 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
             </div>
 
             <table className="print-table">
-              <thead><tr><th>Concepto</th><th>Cant.</th><th>Precio</th><th>IVA</th><th>IRPF</th><th>Base</th></tr></thead>
+              <thead>
+                <tr>
+                  {(preview.invoiceMode || "normal") === "monthly" && <th>Fecha</th>}
+                  <th>Concepto</th><th>Cant.</th><th>Precio</th><th>IVA</th><th>IRPF</th><th>Base</th>
+                </tr>
+              </thead>
               <tbody>
                 {preview.lines.map((line) => (
                   <tr key={line.id}>
+                    {(preview.invoiceMode || "normal") === "monthly" && <td>{line.serviceDate || "—"}</td>}
                     <td>{line.description}</td>
                     <td>{line.quantity}</td>
                     <td>{currency(line.unitPrice)}</td>
