@@ -18,8 +18,13 @@ export async function GET() {
   }
 
   try {
-    const data = await readFiscalState();
-    return NextResponse.json({ configured: true, data });
+    const result = await readFiscalState();
+    return NextResponse.json({
+      configured: true,
+      data: result?.data ?? null,
+      updatedAt: result?.updatedAt ?? null,
+      revision: result?.revision ?? 0
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "No se pudo leer el registro fiscal." }, { status: 500 });
@@ -37,8 +42,15 @@ export async function PUT(request: Request) {
 
   try {
     const payload = await request.json();
-    await writeFiscalState(payload);
-    return NextResponse.json({ configured: true, saved: true });
+    const result = await writeFiscalState(payload);
+    return NextResponse.json({
+      configured: true,
+      saved: Boolean(result?.saved),
+      changed: Boolean(result?.changed),
+      data: result?.data ?? null,
+      updatedAt: result?.updatedAt ?? null,
+      revision: result?.revision ?? 0
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "No se pudo guardar el registro fiscal." }, { status: 500 });

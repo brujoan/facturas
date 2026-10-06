@@ -2,14 +2,28 @@ import { sign } from "crypto";
 
 export type SyncScope = "default" | "fiscal";
 
-type AppPayload = {
+export type AppPayload = {
   issuer?: unknown;
+  issuerUpdatedAt?: string;
   clients?: unknown[];
   activities?: unknown[];
   invoices?: unknown[];
   concepts?: unknown[];
+  deletedClientIds?: string[];
+  deletedInvoiceIds?: string[];
+  deletedActivityIds?: string[];
+  deletedConceptIds?: string[];
   expenses?: unknown[];
   taxRecords?: unknown[];
+  deletedExpenseIds?: string[];
+};
+
+export type SyncResult = {
+  saved?: boolean;
+  changed?: boolean;
+  data?: AppPayload | null;
+  updatedAt?: string | null;
+  revision?: number;
 };
 
 function config() {
@@ -18,7 +32,13 @@ function config() {
   return url && privateKey ? { url, privateKey } : null;
 }
 
-function signature(privateKey: string, method: "GET" | "PUT", scope: SyncScope, body: string, timestamp: string) {
+function signature(
+  privateKey: string,
+  method: "GET" | "PUT",
+  scope: SyncScope,
+  body: string,
+  timestamp: string
+) {
   const canonical = `${timestamp}.${method}.${scope}.${body}`;
   return sign("sha256", Buffer.from(canonical), {
     key: privateKey,
@@ -26,7 +46,11 @@ function signature(privateKey: string, method: "GET" | "PUT", scope: SyncScope, 
   }).toString("base64");
 }
 
-async function requestState(scope: SyncScope, method: "GET" | "PUT", payload?: AppPayload) {
+async function requestState(
+  scope: SyncScope,
+  method: "GET" | "PUT",
+  payload?: AppPayload
+): Promise<SyncResult | null> {
   const cfg = config();
   if (!cfg) return null;
 
@@ -43,33 +67,35 @@ async function requestState(scope: SyncScope, method: "GET" | "PUT", payload?: A
     ...(method === "PUT" ? { body } : {})
   });
 
+  const result = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    throw new Error(`Supabase sync failed: ${response.status} ${await response.text()}`);
+    const detail =
+      result?.error === "duplicate_invoice_number"
+        ? `duplicate_invoice_number:${result.number || ""}`
+        : result?.error || `status_${response.status}`;
+    throw new Error(`Supabase sync failed: ${detail}`);
   }
 
-  return response.json();
+  return result as SyncResult;
 }
 
 export function isDatabaseConfigured() {
   return Boolean(config());
 }
 
-export async function readAppState(): Promise<AppPayload | null> {
-  const result = await requestState("default", "GET");
-  return result?.data ?? null;
+export async function readAppState() {
+  return requestState("default", "GET");
 }
 
 export async function writeAppState(payload: AppPayload) {
-  const result = await requestState("default", "PUT", payload);
-  return Boolean(result?.saved);
+  return requestState("default", "PUT", payload);
 }
 
-export async function readFiscalState(): Promise<AppPayload | null> {
-  const result = await requestState("fiscal", "GET");
-  return result?.data ?? null;
+export async function readFiscalState() {
+  return requestState("fiscal", "GET");
 }
 
 export async function writeFiscalState(payload: AppPayload) {
-  const result = await requestState("fiscal", "PUT", payload);
-  return Boolean(result?.saved);
+  return requestState("fiscal", "PUT", payload);
 }

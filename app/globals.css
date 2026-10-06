@@ -1042,3 +1042,35 @@ h3 { margin-bottom: 8px; }
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+/* Estado de sincronización */
+.sync-badge {
+  margin: 0 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+}
+.sync-badge span,
+.sync-badge small { display: block; }
+.sync-badge span {
+  font-size: 10px;
+  font-weight: 700;
+  color: #b7c0cb;
+}
+.sync-badge small {
+  margin-top: 2px;
+  font-size: 8px;
+  color: #758292;
+}
+.sync-badge.sincronizado span { color: #7ee2a8; }
+.sync-badge.sincronizando span { color: #f7c66b; }
+.sync-badge.error span,
+.sync-badge.sesion span { color: #ff9a9a; }
+
+.fiscal-alert.overdue {
+  background: #401919;
+  border: 1px solid rgba(255,255,255,.08);
+}
+.fiscal-alert.overdue strong { color: #ffd0d0; }

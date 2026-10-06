@@ -2,51 +2,50 @@
 
 Gestor privado de facturación creado con Next.js.
 
-## Funciones incluidas
+## Funciones
 
-- Acceso protegido por contraseña validada en servidor.
-- Cookie de sesión HTTP-only.
-- Datos fiscales del emisor.
-- Agenda de clientes.
-- Series y numeración automática.
-- Fecha de emisión, operación y vencimiento.
-- Múltiples conceptos por factura.
-- Actividad distinta por línea.
-- IVA distinto por línea.
-- Retención/IRPF distinto por línea.
-- Desglose de impuestos por porcentaje.
-- Estados: borrador, emitida, cobrada y anulada.
-- Forma de pago, IBAN y notas.
-- Vista preparada para imprimir o guardar como PDF.
-- Duplicado y edición de facturas.
-- Persistencia remota opcional con Supabase y copia local de respaldo.
+- Acceso protegido por contraseña y sesión HTTP-only con expiración.
+- Clientes, actividades, conceptos, facturas normales y mensuales/recapitulativas.
+- IVA e IRPF distintos por línea.
+- Estados Borrador, Emitida, Cobrada y Anulada.
+- Numeración de facturas emitidas reservada en servidor.
+- Datos fiscales congelados dentro de cada factura emitida.
+- Observaciones internas, PDF mediante impresión y copias JSON.
+- Panel de trimestrales y gastos.
+- Sincronización Mac/iPhone con Supabase, copia local y snapshots de historial.
+- Resolución de conflictos por `updatedAt`, tombstones de borrado y revisión atómica del estado.
 
-## Ejecutar en local
+## Seguridad de datos
 
-1. Instala Node.js 20 o superior.
+La fuente remota de producción es Supabase. El navegador conserva una copia local como respaldo operativo.
+
+La sincronización usa:
+
+1. rutas privadas de Next.js protegidas por sesión;
+2. firma ECDSA servidor-servidor hacia una Edge Function;
+3. compare-and-swap mediante `app_state.revision`;
+4. snapshot previo en `app_state_history`;
+5. tombstones para que un dispositivo antiguo no resucite registros eliminados.
+
+Los Preview deployments de Vercel **no tienen acceso al Supabase de producción**.
+
+## Desarrollo
+
+1. Instala Node.js 22.
 2. Ejecuta `npm install`.
 3. Copia `.env.example` a `.env.local`.
-4. Configura:
-   - `APP_PASSWORD`: contraseña de acceso.
-   - `COOKIE_SECRET`: cadena aleatoria larga (mínimo recomendado: 32 caracteres).
-   - `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` si quieres persistencia remota.
-5. Si usas Supabase, ejecuta el SQL de `supabase/schema.sql` en el proyecto.
-6. Ejecuta `npm run dev`.
-7. Abre `http://localhost:3000`.
+4. Configura `APP_PASSWORD` y `COOKIE_SECRET`.
+5. Para sincronización remota, despliega `supabase/functions/facturas-sync/index.ts`, aplica `supabase/schema.sql` y configura `SUPABASE_SYNC_URL` y `SYNC_SIGNING_PRIVATE_KEY` solo en el servidor.
+6. Ejecuta `npm run test:stability`.
+7. Ejecuta `npm run dev`.
 
-## Despliegue recomendado
+## Flujo de despliegue
 
-El proyecto está preparado para Vercel. Vincula el repositorio `brujoan/facturas` y configura las variables de entorno anteriores.
-
-La `SUPABASE_SERVICE_ROLE_KEY` solo se utiliza en rutas del servidor y nunca debe exponerse con un prefijo `NEXT_PUBLIC_`.
-
-## Persistencia
-
-- Sin Supabase: la aplicación funciona con `localStorage` en el navegador.
-- Con Supabase: facturas, clientes, actividades y configuración se guardan en PostgreSQL y se sincronizan entre dispositivos. El navegador conserva una copia local como respaldo operativo.
-- La tabla necesaria está definida en `supabase/schema.sql`.
-- La tabla tiene RLS activado y no expone políticas públicas; la escritura/lectura se realiza exclusivamente desde el servidor de Next.js.
+- Los cambios se desarrollan en rama y se validan en Preview.
+- Preview no escribe en la base real.
+- GitHub Actions ejecuta los checks de estabilidad y `next build`.
+- Solo el commit final se integra en `main`, generando un único deployment de producción.
 
 ## Nota fiscal
 
-La aplicación calcula IVA y retenciones con los porcentajes introducidos por el usuario. No determina si una retención o tipo impositivo concreto corresponde legalmente a una operación.
+La aplicación es una herramienta de control. Los cálculos dependen de los datos introducidos y no sustituyen la autoliquidación ni el criterio de la AEAT/asesoría.

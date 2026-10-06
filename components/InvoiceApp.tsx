@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import FiscalPanel from "@/components/FiscalPanel";
 
 type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
 type InvoiceMode = "normal" | "monthly";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
+type SyncStatus = "local" | "sincronizando" | "sincronizado" | "error" | "sesion";
 
 type Issuer = {
   fiscalName: string;
@@ -31,6 +32,7 @@ type Client = {
   email: string;
   phone?: string;
   notes?: string;
+  updatedAt?: string;
 };
 
 type ActivityPreset = {
@@ -38,6 +40,7 @@ type ActivityPreset = {
   name: string;
   vat: number;
   withholding: number;
+  updatedAt?: string;
 };
 
 type InvoiceLine = {
@@ -59,6 +62,7 @@ type SavedConcept = {
   vat: number;
   withholding: number;
   lastUsedAt: string;
+  updatedAt?: string;
 };
 
 type Invoice = {
@@ -77,15 +81,23 @@ type Invoice = {
   paymentMethod: string;
   status: Status;
   internalNote?: string;
+  issuerSnapshot?: Issuer;
+  clientSnapshot?: Client;
   createdAt: string;
+  updatedAt?: string;
 };
 
 const storage = {
   issuer: "facturas_issuer_v1",
+  issuerUpdatedAt: "facturas_issuer_updated_at_v1",
   clients: "facturas_clients_v1",
   activities: "facturas_activities_v1",
   invoices: "facturas_invoices_v1",
-  concepts: "facturas_concepts_v1"
+  concepts: "facturas_concepts_v1",
+  deletedClients: "facturas_deleted_clients_v1",
+  deletedInvoices: "facturas_deleted_invoices_v1",
+  deletedActivities: "facturas_deleted_activities_v1",
+  deletedConcepts: "facturas_deleted_concepts_v1"
 };
 
 const blankIssuer: Issuer = {
@@ -145,19 +157,63 @@ function normalizeActivities(items: ActivityPreset[]) {
   return [...presets, ...custom];
 }
 
-function mergeById<T extends { id: string }>(remote: T[], local: T[]) {
+function nowISO() {
+  return new Date().toISOString();
+}
+
+function timestamp(value?: string) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mergeById<T extends { id: string; updatedAt?: string }>(remote: T[], local: T[]) {
   const map = new Map<string, T>();
   remote.forEach((item) => map.set(item.id, item));
-  local.forEach((item) => map.set(item.id, { ...(map.get(item.id) || {} as T), ...item }));
+
+  local.forEach((item) => {
+    const existing = map.get(item.id);
+    if (!existing) {
+      map.set(item.id, { ...item, updatedAt: item.updatedAt || nowISO() });
+      return;
+    }
+
+    const localTs = timestamp(item.updatedAt);
+    const remoteTs = timestamp(existing.updatedAt);
+    if (localTs > remoteTs) map.set(item.id, { ...existing, ...item });
+  });
+
   return [...map.values()];
 }
 
-function mergeIssuer(remote: Partial<Issuer> | undefined, local: Issuer) {
-  const merged = { ...blankIssuer, ...(remote || {}) };
-  (Object.keys(local) as Array<keyof Issuer>).forEach((key) => {
-    if (local[key] !== "") merged[key] = local[key];
-  });
-  return merged;
+function mergeIds(remote: string[] = [], local: string[] = []) {
+  return [...new Set([...remote, ...local])];
+}
+
+function sameJson(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function mergeIssuerState(
+  remote: Partial<Issuer> | undefined,
+  remoteUpdatedAt: string | undefined,
+  local: Issuer,
+  localUpdatedAt: string
+) {
+  if (!remote || Object.keys(remote).length === 0) {
+    return {
+      issuer: local,
+      updatedAt: localUpdatedAt || (Object.values(local).some(Boolean) ? nowISO() : "")
+    };
+  }
+
+  if (timestamp(localUpdatedAt) > timestamp(remoteUpdatedAt)) {
+    return { issuer: local, updatedAt: localUpdatedAt };
+  }
+
+  return {
+    issuer: { ...blankIssuer, ...remote },
+    updatedAt: remoteUpdatedAt || nowISO()
+  };
 }
 
 function uid() {
@@ -165,7 +221,12 @@ function uid() {
 }
 
 function dateISO() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("-");
 }
 
 function monthRange(date: string) {
@@ -175,6 +236,10 @@ function monthRange(date: string) {
   const lastDay = new Date(year, month, 0).getDate();
   const last = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
   return { first, last };
+}
+
+function money(value: number) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 }
 
 function emptyLine(activity?: ActivityPreset): InvoiceLine {
@@ -192,6 +257,7 @@ function emptyLine(activity?: ActivityPreset): InvoiceLine {
 
 function emptyInvoice(activity?: ActivityPreset): Invoice {
   const today = dateISO();
+  const stamp = nowISO();
   return {
     id: uid(),
     number: "",
@@ -208,7 +274,8 @@ function emptyInvoice(activity?: ActivityPreset): Invoice {
     paymentMethod: "Transferencia bancaria",
     status: "Borrador",
     internalNote: "",
-    createdAt: new Date().toISOString()
+    createdAt: stamp,
+    updatedAt: stamp
   };
 }
 
@@ -216,24 +283,28 @@ function currency(value: number) {
   return new Intl.NumberFormat("es-ES", {
     style: "currency",
     currency: "EUR"
-  }).format(value || 0);
+  }).format(money(value));
 }
 
 function lineBase(line: InvoiceLine) {
-  return Number(line.quantity || 0) * Number(line.unitPrice || 0);
+  return money(Number(line.quantity || 0) * Number(line.unitPrice || 0));
 }
 
 function totals(invoice: Invoice) {
   return invoice.lines.reduce(
     (acc, line) => {
       const base = lineBase(line);
-      acc.base += base;
-      acc.vat += base * (Number(line.vat || 0) / 100);
-      acc.withholding += base * (Number(line.withholding || 0) / 100);
+      acc.base = money(acc.base + base);
+      acc.vat = money(acc.vat + money(base * (Number(line.vat || 0) / 100)));
+      acc.withholding = money(acc.withholding + money(base * (Number(line.withholding || 0) / 100)));
       return acc;
     },
     { base: 0, vat: 0, withholding: 0 }
   );
+}
+
+function invoiceCountsAsIssued(invoice: Invoice) {
+  return invoice.status === "Emitida" || invoice.status === "Cobrada";
 }
 
 function nextNumber(series: string, invoices: Invoice[]) {
@@ -255,8 +326,8 @@ function groupTax(lines: InvoiceLine[], field: "vat" | "withholding") {
     if (field === "withholding" && rate === 0) continue;
     const base = lineBase(line);
     const current = map.get(rate) || { base: 0, amount: 0 };
-    current.base += base;
-    current.amount += base * (rate / 100);
+    current.base = money(current.base + base);
+    current.amount = money(current.amount + money(base * (rate / 100)));
     map.set(rate, current);
   }
   return [...map.entries()].sort((a, b) => a[0] - b[0]);
@@ -274,10 +345,15 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [billingHistoryVisible, setBillingHistoryVisible] = useState(false);
   const [ready, setReady] = useState(false);
   const [issuer, setIssuer] = useState<Issuer>(blankIssuer);
+  const [issuerUpdatedAt, setIssuerUpdatedAt] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
   const [activities, setActivities] = useState<ActivityPreset[]>(defaultActivities);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [savedConcepts, setSavedConcepts] = useState<SavedConcept[]>([]);
+  const [deletedClientIds, setDeletedClientIds] = useState<string[]>([]);
+  const [deletedInvoiceIds, setDeletedInvoiceIds] = useState<string[]>([]);
+  const [deletedActivityIds, setDeletedActivityIds] = useState<string[]>([]);
+  const [deletedConceptIds, setDeletedConceptIds] = useState<string[]>([]);
   const [draft, setDraft] = useState<Invoice>(() => emptyInvoice(defaultActivities[0]));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Invoice | null>(null);
@@ -285,6 +361,78 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [activityDraft, setActivityDraft] = useState({ name: "", vat: 21, withholding: 0 });
   const [notice, setNotice] = useState("");
   const [remoteConfigured, setRemoteConfigured] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("local");
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
+  const skipNextSyncRef = useRef(false);
+
+  function mainPayload() {
+    return {
+      issuer,
+      issuerUpdatedAt,
+      clients,
+      activities,
+      invoices,
+      concepts: savedConcepts,
+      deletedClientIds,
+      deletedInvoiceIds,
+      deletedActivityIds,
+      deletedConceptIds
+    };
+  }
+
+  function applyRemoteState(remote: any) {
+    if (!remote) return false;
+
+    const nextDeletedClients = mergeIds(remote.deletedClientIds || [], deletedClientIds);
+    const nextDeletedInvoices = mergeIds(remote.deletedInvoiceIds || [], deletedInvoiceIds);
+    const nextDeletedActivities = mergeIds(remote.deletedActivityIds || [], deletedActivityIds);
+    const nextDeletedConcepts = mergeIds(remote.deletedConceptIds || [], deletedConceptIds);
+
+    const nextClients = mergeById<Client>(remote.clients || [], clients)
+      .filter((item) => !nextDeletedClients.includes(item.id));
+    const nextActivities = normalizeActivities(
+      mergeById<ActivityPreset>(remote.activities || [], activities)
+        .filter((item) => !nextDeletedActivities.includes(item.id))
+    );
+    const nextInvoices = mergeById<Invoice>(remote.invoices || [], invoices)
+      .filter((item) => !nextDeletedInvoices.includes(item.id));
+    const nextConcepts = mergeById<SavedConcept>(remote.concepts || [], savedConcepts)
+      .filter((item) => !nextDeletedConcepts.includes(item.id));
+
+    const issuerMerge = mergeIssuerState(
+      remote.issuer,
+      remote.issuerUpdatedAt,
+      issuer,
+      issuerUpdatedAt
+    );
+
+    const changed =
+      !sameJson(nextClients, clients) ||
+      !sameJson(nextActivities, activities) ||
+      !sameJson(nextInvoices, invoices) ||
+      !sameJson(nextConcepts, savedConcepts) ||
+      !sameJson(nextDeletedClients, deletedClientIds) ||
+      !sameJson(nextDeletedInvoices, deletedInvoiceIds) ||
+      !sameJson(nextDeletedActivities, deletedActivityIds) ||
+      !sameJson(nextDeletedConcepts, deletedConceptIds) ||
+      !sameJson(issuerMerge.issuer, issuer) ||
+      issuerMerge.updatedAt !== issuerUpdatedAt;
+
+    if (!changed) return false;
+
+    skipNextSyncRef.current = true;
+    setClients(nextClients);
+    setActivities(nextActivities);
+    setInvoices(nextInvoices);
+    setSavedConcepts(nextConcepts);
+    setDeletedClientIds(nextDeletedClients);
+    setDeletedInvoiceIds(nextDeletedInvoices);
+    setDeletedActivityIds(nextDeletedActivities);
+    setDeletedConceptIds(nextDeletedConcepts);
+    setIssuer(issuerMerge.issuer);
+    setIssuerUpdatedAt(issuerMerge.updatedAt);
+    return true;
+  }
 
   useEffect(() => {
     const read = <T,>(key: string, fallback: T): T => {
@@ -298,91 +446,199 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
     async function load() {
       let loadedIssuer = read<Issuer>(storage.issuer, blankIssuer);
+      let loadedIssuerUpdatedAt = read<string>(storage.issuerUpdatedAt, "");
       let loadedClients = read<Client[]>(storage.clients, []);
       let loadedActivities = normalizeActivities(read<ActivityPreset[]>(storage.activities, defaultActivities));
       let loadedInvoices = read<Invoice[]>(storage.invoices, []);
       let loadedConcepts = read<SavedConcept[]>(storage.concepts, []);
+      let loadedDeletedClients = read<string[]>(storage.deletedClients, []);
+      let loadedDeletedInvoices = read<string[]>(storage.deletedInvoices, []);
+      let loadedDeletedActivities = read<string[]>(storage.deletedActivities, []);
+      let loadedDeletedConcepts = read<string[]>(storage.deletedConcepts, []);
+
+      const localHadData =
+        Boolean(loadedIssuer.fiscalName || loadedIssuer.taxId) ||
+        loadedClients.length > 0 ||
+        loadedInvoices.length > 0 ||
+        loadedConcepts.length > 0 ||
+        loadedDeletedClients.length > 0 ||
+        loadedDeletedInvoices.length > 0 ||
+        loadedDeletedActivities.length > 0 ||
+        loadedDeletedConcepts.length > 0;
 
       try {
         const response = await fetch("/api/data", { cache: "no-store" });
         const result = await response.json();
-        if (response.ok && result.configured) {
+
+        if (response.status === 401) {
+          setSyncStatus("sesion");
+        } else if (response.ok && result.configured) {
           setRemoteConfigured(true);
+          setSyncStatus("sincronizado");
+          setLastSyncedAt(result.updatedAt || nowISO());
 
           const remote = result.data || {};
-          const mergedIssuer = mergeIssuer(remote.issuer, loadedIssuer);
-          const mergedClients = mergeById<Client>(remote.clients || [], loadedClients);
-          const mergedActivities = normalizeActivities(mergeById<ActivityPreset>(remote.activities || [], loadedActivities));
-          const mergedInvoices = mergeById<Invoice>(remote.invoices || [], loadedInvoices);
-          const mergedConcepts = mergeById<SavedConcept>(remote.concepts || [], loadedConcepts);
+          loadedDeletedClients = mergeIds(remote.deletedClientIds || [], loadedDeletedClients);
+          loadedDeletedInvoices = mergeIds(remote.deletedInvoiceIds || [], loadedDeletedInvoices);
+          loadedDeletedActivities = mergeIds(remote.deletedActivityIds || [], loadedDeletedActivities);
+          loadedDeletedConcepts = mergeIds(remote.deletedConceptIds || [], loadedDeletedConcepts);
 
-          loadedIssuer = mergedIssuer;
-          loadedClients = mergedClients;
-          loadedActivities = mergedActivities;
-          loadedInvoices = mergedInvoices;
-          loadedConcepts = mergedConcepts;
+          const issuerMerge = mergeIssuerState(
+            remote.issuer,
+            remote.issuerUpdatedAt,
+            loadedIssuer,
+            loadedIssuerUpdatedAt
+          );
+          loadedIssuer = issuerMerge.issuer;
+          loadedIssuerUpdatedAt = issuerMerge.updatedAt;
 
-          const localHadData =
-            Boolean(loadedIssuer.fiscalName || loadedIssuer.taxId) ||
-            loadedClients.length > 0 ||
-            loadedInvoices.length > 0 ||
-            loadedConcepts.length > 0;
+          loadedClients = mergeById<Client>(remote.clients || [], loadedClients)
+            .filter((item) => !loadedDeletedClients.includes(item.id));
+          loadedActivities = normalizeActivities(
+            mergeById<ActivityPreset>(remote.activities || [], loadedActivities)
+              .filter((item) => !loadedDeletedActivities.includes(item.id))
+          );
+          loadedInvoices = mergeById<Invoice>(remote.invoices || [], loadedInvoices)
+            .filter((item) => !loadedDeletedInvoices.includes(item.id));
+          loadedConcepts = mergeById<SavedConcept>(remote.concepts || [], loadedConcepts)
+            .filter((item) => !loadedDeletedConcepts.includes(item.id));
 
-          if (localHadData) {
-            await fetch("/api/data", {
+          let snapshotsAdded = false;
+          loadedInvoices = loadedInvoices.map((invoice) => {
+            if (invoice.status === "Borrador" || (invoice.issuerSnapshot && invoice.clientSnapshot)) {
+              return invoice;
+            }
+
+            const client = loadedClients.find((item) => item.id === invoice.clientId);
+            if (!client) return invoice;
+
+            snapshotsAdded = true;
+            return {
+              ...invoice,
+              issuerSnapshot: invoice.issuerSnapshot || { ...loadedIssuer },
+              clientSnapshot: invoice.clientSnapshot || { ...client },
+              updatedAt: nowISO()
+            };
+          });
+
+          if (localHadData || snapshotsAdded) {
+            const syncResponse = await fetch("/api/data", {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 issuer: loadedIssuer,
+                issuerUpdatedAt: loadedIssuerUpdatedAt,
                 clients: loadedClients,
                 activities: loadedActivities,
                 invoices: loadedInvoices,
-                concepts: loadedConcepts
+                concepts: loadedConcepts,
+                deletedClientIds: loadedDeletedClients,
+                deletedInvoiceIds: loadedDeletedInvoices,
+                deletedActivityIds: loadedDeletedActivities,
+                deletedConceptIds: loadedDeletedConcepts
               })
             });
+            const synced = await syncResponse.json().catch(() => ({}));
+            if (syncResponse.ok && synced.data) {
+              loadedClients = synced.data.clients || loadedClients;
+              loadedActivities = normalizeActivities(synced.data.activities || loadedActivities);
+              loadedInvoices = synced.data.invoices || loadedInvoices;
+              loadedConcepts = synced.data.concepts || loadedConcepts;
+              loadedIssuer = { ...blankIssuer, ...(synced.data.issuer || loadedIssuer) };
+              loadedIssuerUpdatedAt = synced.data.issuerUpdatedAt || loadedIssuerUpdatedAt;
+              setLastSyncedAt(synced.updatedAt || nowISO());
+            }
           }
         }
       } catch {
-        // Si la base de datos no está disponible, la copia local sigue funcionando.
+        setSyncStatus("error");
       }
 
       setIssuer(loadedIssuer);
+      setIssuerUpdatedAt(loadedIssuerUpdatedAt);
       setClients(loadedClients);
       setActivities(loadedActivities.length ? loadedActivities : defaultActivities);
       setInvoices(loadedInvoices);
       setSavedConcepts(loadedConcepts);
+      setDeletedClientIds(loadedDeletedClients);
+      setDeletedInvoiceIds(loadedDeletedInvoices);
+      setDeletedActivityIds(loadedDeletedActivities);
+      setDeletedConceptIds(loadedDeletedConcepts);
       setDraft(emptyInvoice(loadedActivities[0] || defaultActivities[0]));
       setReady(true);
     }
 
-    load();
+    void load();
   }, []);
 
   useEffect(() => {
     if (!ready) return;
 
     localStorage.setItem(storage.issuer, JSON.stringify(issuer));
+    localStorage.setItem(storage.issuerUpdatedAt, JSON.stringify(issuerUpdatedAt));
     localStorage.setItem(storage.clients, JSON.stringify(clients));
     localStorage.setItem(storage.activities, JSON.stringify(activities));
     localStorage.setItem(storage.invoices, JSON.stringify(invoices));
     localStorage.setItem(storage.concepts, JSON.stringify(savedConcepts));
+    localStorage.setItem(storage.deletedClients, JSON.stringify(deletedClientIds));
+    localStorage.setItem(storage.deletedInvoices, JSON.stringify(deletedInvoiceIds));
+    localStorage.setItem(storage.deletedActivities, JSON.stringify(deletedActivityIds));
+    localStorage.setItem(storage.deletedConcepts, JSON.stringify(deletedConceptIds));
+
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      return;
+    }
 
     const timer = window.setTimeout(async () => {
       try {
+        setSyncStatus("sincronizando");
         const response = await fetch("/api/data", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ issuer, clients, activities, invoices, concepts: savedConcepts })
+          body: JSON.stringify(mainPayload())
         });
-        const result = await response.json();
-        if (response.ok && result.configured) setRemoteConfigured(true);
+        const result = await response.json().catch(() => ({}));
+
+        if (response.status === 401) {
+          setSyncStatus("sesion");
+          return;
+        }
+
+        if (!response.ok) {
+          setSyncStatus("error");
+          if (result?.error) flash(result.error);
+          return;
+        }
+
+        if (!result.configured) {
+          setSyncStatus("local");
+          return;
+        }
+
+        setRemoteConfigured(true);
+        setSyncStatus("sincronizado");
+        setLastSyncedAt(result.updatedAt || nowISO());
+        if (result.data) applyRemoteState(result.data);
       } catch {
-        // El guardado local sigue siendo la copia de respaldo del navegador.
+        setSyncStatus("error");
       }
-    }, 500);
+    }, 650);
 
     return () => window.clearTimeout(timer);
-  }, [issuer, clients, activities, invoices, savedConcepts, ready]);
+  }, [
+    issuer,
+    issuerUpdatedAt,
+    clients,
+    activities,
+    invoices,
+    savedConcepts,
+    deletedClientIds,
+    deletedInvoiceIds,
+    deletedActivityIds,
+    deletedConceptIds,
+    ready
+  ]);
 
   useEffect(() => {
     if (!ready || !remoteConfigured) return;
@@ -394,19 +650,25 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
       try {
         const response = await fetch("/api/data", { cache: "no-store" });
-        const result = await response.json();
-        if (!response.ok || !result.data || cancelled) return;
+        const result = await response.json().catch(() => ({}));
+        if (cancelled) return;
 
-        const remote = result.data;
-        if (remote.issuer) setIssuer((current) => ({ ...current, ...remote.issuer }));
-        if (remote.clients) setClients((current) => mergeById<Client>(current, remote.clients));
-        if (remote.activities) {
-          setActivities((current) => normalizeActivities(mergeById<ActivityPreset>(current, remote.activities)));
+        if (response.status === 401) {
+          setSyncStatus("sesion");
+          return;
         }
-        if (remote.invoices) setInvoices((current) => mergeById<Invoice>(current, remote.invoices));
-        if (remote.concepts) setSavedConcepts((current) => mergeById<SavedConcept>(current, remote.concepts));
+
+        if (!response.ok || !result.data) {
+          setSyncStatus("error");
+          return;
+        }
+
+        const changed = applyRemoteState(result.data);
+        setSyncStatus("sincronizado");
+        setLastSyncedAt(result.updatedAt || nowISO());
+        if (!changed) skipNextSyncRef.current = false;
       } catch {
-        // Mantiene la copia local si no hay conexión.
+        setSyncStatus("error");
       }
     }
 
@@ -419,7 +681,20 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);
     };
-  }, [ready, remoteConfigured]);
+  }, [
+    ready,
+    remoteConfigured,
+    issuer,
+    issuerUpdatedAt,
+    clients,
+    activities,
+    invoices,
+    savedConcepts,
+    deletedClientIds,
+    deletedInvoiceIds,
+    deletedActivityIds,
+    deletedConceptIds
+  ]);
 
   const draftTotals = useMemo(() => totals(draft), [draft]);
   const recentInvoices = useMemo(
@@ -434,7 +709,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
     return invoices
       .filter((invoice) => {
-        if (invoice.status === "Anulada") return false;
+        if (!invoiceCountsAsIssued(invoice)) return false;
         if (billingPeriod === "total") return true;
 
         const year = Number(invoice.issueDate.slice(0, 4));
@@ -446,7 +721,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       })
       .reduce((sum, invoice) => {
         const t = totals(invoice);
-        return sum + t.base + t.vat - t.withholding;
+        return money(sum + t.base + t.vat - t.withholding);
       }, 0);
   }, [invoices, billingPeriod]);
 
@@ -454,7 +729,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     const groups = new Map<string, { year: number; month: number; invoices: number; total: number }>();
 
     invoices
-      .filter((invoice) => invoice.status !== "Anulada" && invoice.issueDate)
+      .filter((invoice) => invoiceCountsAsIssued(invoice) && invoice.issueDate)
       .forEach((invoice) => {
         const year = Number(invoice.issueDate.slice(0, 4));
         const month = Number(invoice.issueDate.slice(5, 7));
@@ -478,7 +753,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     window.setTimeout(() => setNotice(""), 2500);
   }
 
-  function exportBackup() {
+  async function exportBackup() {
     const parseLocal = (key: string) => {
       try {
         const raw = localStorage.getItem(key);
@@ -488,29 +763,39 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       }
     };
 
-    const backup = {
-      schema: 1,
-      version,
-      exportedAt: new Date().toISOString(),
-      main: {
-        issuer,
-        clients,
-        activities,
-        invoices,
-        concepts: savedConcepts
-      },
-      fiscal: {
-        expenses: parseLocal("facturas_expenses_v1"),
-        taxRecords: parseLocal("facturas_tax_records_v1"),
-        deletedExpenseIds: parseLocal("facturas_deleted_expenses_v1")
+    let fiscalData = {
+      expenses: parseLocal("facturas_expenses_v1"),
+      taxRecords: parseLocal("facturas_tax_records_v1"),
+      deletedExpenseIds: parseLocal("facturas_deleted_expenses_v1")
+    };
+
+    try {
+      const response = await fetch("/api/fiscal", { cache: "no-store" });
+      const result = await response.json();
+      if (response.ok && result.configured && result.data) {
+        fiscalData = {
+          expenses: result.data.expenses || fiscalData.expenses,
+          taxRecords: result.data.taxRecords || fiscalData.taxRecords,
+          deletedExpenseIds: result.data.deletedExpenseIds || fiscalData.deletedExpenseIds
+        };
       }
+    } catch {
+      // Si no hay conexión, la copia local sigue siendo exportable.
+    }
+
+    const backup = {
+      schema: 2,
+      version,
+      exportedAt: nowISO(),
+      main: mainPayload(),
+      fiscal: fiscalData
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `facturas-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = `facturas-backup-${dateISO()}.json`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -523,21 +808,47 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
     try {
       const backup = JSON.parse(await file.text());
-      if (!backup?.main || !Array.isArray(backup.main.clients) || !Array.isArray(backup.main.invoices)) {
+      if (
+        !backup?.main ||
+        !Array.isArray(backup.main.clients) ||
+        !Array.isArray(backup.main.invoices)
+      ) {
         return flash("El archivo no parece una copia válida de Facturas.");
       }
 
-      const nextIssuer = { ...blankIssuer, ...(backup.main.issuer || {}) };
-      const nextClients = mergeById<Client>(clients, backup.main.clients || []);
-      const nextActivities = normalizeActivities(mergeById<ActivityPreset>(activities, backup.main.activities || []));
-      const nextInvoices = mergeById<Invoice>(invoices, backup.main.invoices || []);
-      const nextConcepts = mergeById<SavedConcept>(savedConcepts, backup.main.concepts || []);
+      const nextDeletedClients = mergeIds(deletedClientIds, backup.main.deletedClientIds || []);
+      const nextDeletedInvoices = mergeIds(deletedInvoiceIds, backup.main.deletedInvoiceIds || []);
+      const nextDeletedActivities = mergeIds(deletedActivityIds, backup.main.deletedActivityIds || []);
+      const nextDeletedConcepts = mergeIds(deletedConceptIds, backup.main.deletedConceptIds || []);
 
-      setIssuer(nextIssuer);
+      const issuerMerge = mergeIssuerState(
+        backup.main.issuer,
+        backup.main.issuerUpdatedAt,
+        issuer,
+        issuerUpdatedAt
+      );
+
+      const nextClients = mergeById<Client>(clients, backup.main.clients || [])
+        .filter((item) => !nextDeletedClients.includes(item.id));
+      const nextActivities = normalizeActivities(
+        mergeById<ActivityPreset>(activities, backup.main.activities || [])
+          .filter((item) => !nextDeletedActivities.includes(item.id))
+      );
+      const nextInvoices = mergeById<Invoice>(invoices, backup.main.invoices || [])
+        .filter((item) => !nextDeletedInvoices.includes(item.id));
+      const nextConcepts = mergeById<SavedConcept>(savedConcepts, backup.main.concepts || [])
+        .filter((item) => !nextDeletedConcepts.includes(item.id));
+
+      setIssuer(issuerMerge.issuer);
+      setIssuerUpdatedAt(issuerMerge.updatedAt);
       setClients(nextClients);
       setActivities(nextActivities);
       setInvoices(nextInvoices);
       setSavedConcepts(nextConcepts);
+      setDeletedClientIds(nextDeletedClients);
+      setDeletedInvoiceIds(nextDeletedInvoices);
+      setDeletedActivityIds(nextDeletedActivities);
+      setDeletedConceptIds(nextDeletedConcepts);
 
       const fiscal = backup.fiscal || {};
       const currentExpenses = (() => {
@@ -550,32 +861,40 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         try { return JSON.parse(localStorage.getItem("facturas_deleted_expenses_v1") || "[]"); } catch { return []; }
       })();
 
-      const mergedDeletedExpenseIds = [...new Set([
-        ...currentDeletedExpenseIds,
-        ...(fiscal.deletedExpenseIds || [])
-      ])];
+      const mergedDeletedExpenseIds = mergeIds(currentDeletedExpenseIds, fiscal.deletedExpenseIds || []);
       const deletedSet = new Set(mergedDeletedExpenseIds);
       const mergedExpenses = mergeById<any>(currentExpenses, fiscal.expenses || [])
         .filter((item: any) => !deletedSet.has(item.id));
+
       const recordMap = new Map<string, any>();
       currentRecords.forEach((item: any) => recordMap.set(item.key, item));
-      (fiscal.taxRecords || []).forEach((item: any) => recordMap.set(item.key, { ...(recordMap.get(item.key) || {}), ...item }));
+      (fiscal.taxRecords || []).forEach((item: any) => {
+        const existing = recordMap.get(item.key);
+        if (!existing || timestamp(item.updatedAt) > timestamp(existing.updatedAt)) {
+          recordMap.set(item.key, { ...item, updatedAt: item.updatedAt || nowISO() });
+        }
+      });
       const mergedRecords = [...recordMap.values()];
 
       localStorage.setItem("facturas_expenses_v1", JSON.stringify(mergedExpenses));
       localStorage.setItem("facturas_tax_records_v1", JSON.stringify(mergedRecords));
       localStorage.setItem("facturas_deleted_expenses_v1", JSON.stringify(mergedDeletedExpenseIds));
 
-      await Promise.all([
+      const [mainResponse, fiscalResponse] = await Promise.all([
         fetch("/api/data", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            issuer: nextIssuer,
+            issuer: issuerMerge.issuer,
+            issuerUpdatedAt: issuerMerge.updatedAt,
             clients: nextClients,
             activities: nextActivities,
             invoices: nextInvoices,
-            concepts: nextConcepts
+            concepts: nextConcepts,
+            deletedClientIds: nextDeletedClients,
+            deletedInvoiceIds: nextDeletedInvoices,
+            deletedActivityIds: nextDeletedActivities,
+            deletedConceptIds: nextDeletedConcepts
           })
         }),
         fetch("/api/fiscal", {
@@ -588,6 +907,10 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
           })
         })
       ]);
+
+      if (!mainResponse.ok || !fiscalResponse.ok) {
+        return flash("La copia se importó localmente, pero falta sincronizar con el servidor.");
+      }
 
       flash("Copia importada y sincronizada.");
       window.setTimeout(() => window.location.reload(), 700);
@@ -641,7 +964,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
           unitPrice: Number(line.unitPrice || 0),
           vat: Number(line.vat || 0),
           withholding: Number(line.withholding || 0),
-          lastUsedAt: new Date().toISOString()
+          lastUsedAt: nowISO(),
+          updatedAt: nowISO()
         };
 
         if (existingIndex >= 0) next[existingIndex] = concept;
@@ -679,22 +1003,66 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   }
 
   function saveInvoice() {
-    if (!draft.clientId) return flash("Selecciona un cliente.");
-    if (!draft.lines.some((line) => line.description.trim())) return flash("Añade al menos un concepto.");
-    if (!issuer.fiscalName || !issuer.taxId) return flash("Completa tus datos fiscales en Configuración.");
-    if ((draft.invoiceMode || "normal") === "monthly") {
-      if (!draft.periodFrom || !draft.periodTo) return flash("Indica el periodo facturado desde/hasta.");
-      if (draft.periodFrom > draft.periodTo) return flash("La fecha inicial del periodo no puede ser posterior a la final.");
+    const selectedClient = clients.find((client) => client.id === draft.clientId);
+    const isDraft = draft.status === "Borrador";
+
+    if (!isDraft) {
+      if (!draft.clientId || !selectedClient) return flash("Selecciona un cliente.");
+      if (!draft.lines.some((line) => line.description.trim())) return flash("Añade al menos un concepto.");
+      if (!issuer.fiscalName || !issuer.taxId || !issuer.address || !issuer.postalCode || !issuer.city) {
+        return flash("Completa tus datos fiscales y dirección antes de emitir.");
+      }
+      if (!selectedClient.name || !selectedClient.taxId || !selectedClient.address) {
+        return flash("Completa nombre, NIF/CIF y dirección del cliente antes de emitir.");
+      }
+
+      for (const line of draft.lines) {
+        if (!line.description.trim()) continue;
+        if (Number(line.quantity) <= 0) return flash("La cantidad de cada concepto debe ser mayor que 0.");
+        if (Number(line.unitPrice) < 0) return flash("El precio no puede ser negativo.");
+        if (Number(line.vat) < 0 || Number(line.vat) > 100) return flash("Revisa el porcentaje de IVA.");
+        if (Number(line.withholding) < 0 || Number(line.withholding) > 100) return flash("Revisa el porcentaje de IRPF.");
+      }
+
+      if ((draft.invoiceMode || "normal") === "monthly") {
+        if (!draft.periodFrom || !draft.periodTo) return flash("Indica el periodo facturado desde/hasta.");
+        if (draft.periodFrom > draft.periodTo) return flash("La fecha inicial del periodo no puede ser posterior a la final.");
+        if (draft.periodFrom.slice(0, 7) !== draft.periodTo.slice(0, 7)) {
+          return flash("Una factura mensual debe corresponder a un único mes natural.");
+        }
+
+        const invalidServiceDate = draft.lines.some(
+          (line) =>
+            line.serviceDate &&
+            (line.serviceDate < (draft.periodFrom || "") || line.serviceDate > (draft.periodTo || ""))
+        );
+        if (invalidServiceDate) return flash("Hay una fecha de concepto fuera del periodo facturado.");
+      }
+
+      const manualNumber = draft.number.trim();
+      if (
+        manualNumber &&
+        invoices.some((invoice) => invoice.id !== editingId && invoice.number.trim() === manualNumber)
+      ) {
+        return flash(`Ya existe una factura con el número ${manualNumber}.`);
+      }
     }
 
-    const number = draft.number.trim() || nextNumber(draft.series, invoices);
+    const previous = editingId ? invoices.find((item) => item.id === editingId) : undefined;
+    const stamp = nowISO();
     const saved: Invoice = {
       ...draft,
-      number,
-      status: draft.status,
-      createdAt: editingId
-        ? invoices.find((item) => item.id === editingId)?.createdAt || draft.createdAt
-        : new Date().toISOString()
+      number: isDraft ? draft.number.trim() : draft.number.trim(),
+      issuerSnapshot:
+        previous?.issuerSnapshot ||
+        draft.issuerSnapshot ||
+        (!isDraft ? { ...issuer } : undefined),
+      clientSnapshot:
+        previous?.clientSnapshot ||
+        draft.clientSnapshot ||
+        (!isDraft && selectedClient ? { ...selectedClient } : undefined),
+      createdAt: previous?.createdAt || draft.createdAt || stamp,
+      updatedAt: stamp
     };
 
     setInvoices((current) =>
@@ -706,7 +1074,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     setEditingId(null);
     setDraft(emptyInvoice(activities[0]));
     setTab("facturas");
-    flash(editingId ? "Factura actualizada." : `Factura ${number} guardada.`);
+    flash(editingId ? "Factura actualizada." : (isDraft ? "Borrador guardado." : "Factura guardada y pendiente de numeración segura."));
   }
 
   function editInvoice(invoice: Invoice) {
@@ -716,15 +1084,29 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   }
 
   function duplicateInvoice(invoice: Invoice) {
+    const today = dateISO();
+    const range = monthRange(today);
+    const stamp = nowISO();
+
     setDraft({
       ...JSON.parse(JSON.stringify(invoice)),
       id: uid(),
       number: "",
-      issueDate: dateISO(),
-      operationDate: dateISO(),
-      dueDate: dateISO(),
+      issueDate: today,
+      operationDate: today,
+      periodFrom: (invoice.invoiceMode || "normal") === "monthly" ? range.first : "",
+      periodTo: (invoice.invoiceMode || "normal") === "monthly" ? range.last : "",
+      dueDate: today,
       status: "Borrador",
-      createdAt: new Date().toISOString()
+      issuerSnapshot: undefined,
+      clientSnapshot: undefined,
+      lines: invoice.lines.map((line) => ({
+        ...line,
+        id: uid(),
+        serviceDate: (invoice.invoiceMode || "normal") === "monthly" ? "" : line.serviceDate
+      })),
+      createdAt: stamp,
+      updatedAt: stamp
     });
     setEditingId(null);
     setTab("nueva");
@@ -732,18 +1114,21 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
   function updateInvoiceInternalNote(id: string, internalNote: string) {
     setInvoices((current) =>
-      current.map((invoice) => invoice.id === id ? { ...invoice, internalNote } : invoice)
+      current.map((invoice) => invoice.id === id ? { ...invoice, internalNote, updatedAt: nowISO() } : invoice)
     );
   }
 
   function deleteInvoice(id: string) {
     if (!window.confirm("¿Eliminar esta factura? Esta acción no se puede deshacer.")) return;
     setInvoices((current) => current.filter((item) => item.id !== id));
+    setDeletedInvoiceIds((current) => current.includes(id) ? current : [...current, id]);
   }
 
   function printInvoice(invoice: Invoice) {
     setPreview(invoice);
-    window.setTimeout(() => window.print(), 100);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => window.print());
+    });
   }
 
   function saveClient() {
@@ -758,7 +1143,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       name: clientDraft.name.trim(),
       taxId: clientDraft.taxId.trim(),
       phone: (clientDraft.phone || "").trim(),
-      notes: clientDraft.notes || ""
+      notes: clientDraft.notes || "",
+      updatedAt: nowISO()
     };
 
     setClients((current) => editing
@@ -778,26 +1164,39 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     }
     if (!window.confirm(`¿Eliminar a ${client.name}? Esta acción no se puede deshacer.`)) return;
     setClients((current) => current.filter((item) => item.id !== client.id));
+    setDeletedClientIds((current) => current.includes(client.id) ? current : [...current, client.id]);
     if (clientDraft.id === client.id) setClientDraft({ ...blankClient });
     flash("Cliente eliminado.");
   }
 
   function addActivity() {
     if (!activityDraft.name.trim()) return flash("Pon un nombre a la actividad.");
-    setActivities((current) => [...current, { ...activityDraft, id: uid() }]);
+    setActivities((current) => [...current, { ...activityDraft, id: uid(), updatedAt: nowISO() }]);
     setActivityDraft({ name: "", vat: 21, withholding: 0 });
     flash("Actividad añadida.");
   }
 
   function updateActivity(id: string, patch: Partial<ActivityPreset>) {
     setActivities((current) =>
-      current.map((activity) => activity.id === id ? { ...activity, ...patch } : activity)
+      current.map((activity) => activity.id === id ? { ...activity, ...patch, updatedAt: nowISO() } : activity)
     );
+  }
+
+  function deleteActivity(id: string) {
+    if (defaultActivities.some((activity) => activity.id === id)) return;
+    setActivities((current) => current.filter((activity) => activity.id !== id));
+    setDeletedActivityIds((current) => current.includes(id) ? current : [...current, id]);
+    flash("Actividad eliminada.");
+  }
+
+  function updateIssuer(patch: Partial<Issuer>) {
+    setIssuer((current) => ({ ...current, ...patch }));
+    setIssuerUpdatedAt(nowISO());
   }
 
   function updateSavedConcept(id: string, patch: Partial<SavedConcept>) {
     setSavedConcepts((current) =>
-      current.map((concept) => concept.id === id ? { ...concept, ...patch } : concept)
+      current.map((concept) => concept.id === id ? { ...concept, ...patch, updatedAt: nowISO() } : concept)
     );
   }
 
@@ -810,8 +1209,17 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     return <main className="loading">Cargando gestor…</main>;
   }
 
-  const printClient = preview ? clients.find((client) => client.id === preview.clientId) : undefined;
+  const printClient = preview
+    ? preview.clientSnapshot || clients.find((client) => client.id === preview.clientId)
+    : undefined;
+  const printIssuer = preview?.issuerSnapshot || issuer;
   const printTotals = preview ? totals(preview) : null;
+  const syncLabel =
+    syncStatus === "sincronizado" ? "Sincronizado" :
+    syncStatus === "sincronizando" ? "Guardando…" :
+    syncStatus === "sesion" ? "Sesión caducada" :
+    syncStatus === "error" ? "Error de sincronización" :
+    "Solo en este dispositivo";
 
   return (
     <>
@@ -853,6 +1261,12 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
             <div className="version-badge">
               <strong>v{version}</strong>
               <span>deploy {deployment}</span>
+            </div>
+            <div className={`sync-badge ${syncStatus}`}>
+              <span>{syncLabel}</span>
+              {lastSyncedAt && syncStatus === "sincronizado" && (
+                <small>{new Date(lastSyncedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</small>
+              )}
             </div>
             <button className="logout" onClick={logout}>Cerrar sesión</button>
           </div>
@@ -995,7 +1409,13 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                                 />
                               </td>
                               <td className="actions">
-                                <button onClick={() => printInvoice(invoice)}>PDF</button>
+                                <button
+                                  onClick={() => printInvoice(invoice)}
+                                  disabled={invoiceCountsAsIssued(invoice) && !invoice.number}
+                                  title={invoiceCountsAsIssued(invoice) && !invoice.number ? "Esperando numeración segura" : "Imprimir / guardar PDF"}
+                                >
+                                  {invoiceCountsAsIssued(invoice) && !invoice.number ? "Numerando…" : "PDF"}
+                                </button>
                                 <button onClick={() => editInvoice(invoice)}>Editar</button>
                                 <button onClick={() => duplicateInvoice(invoice)}>Duplicar</button>
                                 <button className="danger-link" onClick={() => deleteInvoice(invoice.id)}>Eliminar</button>
@@ -1016,7 +1436,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               <header className="page-header">
                 <div>
                   <p className="eyebrow">{editingId ? "Editar" : "Nueva"}</p>
-                  <h1>{editingId ? `Factura ${draft.number}` : "Crear factura"}</h1>
+                  <h1>{editingId ? `Factura ${draft.number || "sin numerar"}` : "Crear factura"}</h1>
                   <p className="muted">Cada línea puede tener una actividad, IVA y retención diferentes.</p>
                 </div>
                 <div className="header-actions">
@@ -1170,7 +1590,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                         <input value={draft.paymentMethod} onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })} />
                       </label>
                       <label>IBAN
-                        <input value={issuer.iban} onChange={(e) => setIssuer({ ...issuer, iban: e.target.value })} placeholder="Se toma de Configuración" />
+                        <input value={issuer.iban} onChange={(e) => updateIssuer({ iban: e.target.value })} placeholder="Se toma de Configuración" />
                       </label>
                       <label className="span-2">Notas
                         <textarea rows={4} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Condiciones, referencia del servicio, observaciones…" />
@@ -1281,15 +1701,15 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                 <div className="panel">
                   <h2>Tus datos fiscales</h2>
                   <div className="form-grid three">
-                    <label>Nombre / razón social<input value={issuer.fiscalName} onChange={(e) => setIssuer({ ...issuer, fiscalName: e.target.value })} /></label>
-                    <label>NIF<input value={issuer.taxId} onChange={(e) => setIssuer({ ...issuer, taxId: e.target.value })} /></label>
-                    <label>Email<input value={issuer.email} onChange={(e) => setIssuer({ ...issuer, email: e.target.value })} /></label>
-                    <label className="span-2">Dirección fiscal<input value={issuer.address} onChange={(e) => setIssuer({ ...issuer, address: e.target.value })} /></label>
-                    <label>Teléfono<input value={issuer.phone} onChange={(e) => setIssuer({ ...issuer, phone: e.target.value })} /></label>
-                    <label>Código postal<input value={issuer.postalCode} onChange={(e) => setIssuer({ ...issuer, postalCode: e.target.value })} /></label>
-                    <label>Ciudad<input value={issuer.city} onChange={(e) => setIssuer({ ...issuer, city: e.target.value })} /></label>
-                    <label>Provincia<input value={issuer.province} onChange={(e) => setIssuer({ ...issuer, province: e.target.value })} /></label>
-                    <label className="span-2">IBAN<input value={issuer.iban} onChange={(e) => setIssuer({ ...issuer, iban: e.target.value })} /></label>
+                    <label>Nombre / razón social<input value={issuer.fiscalName} onChange={(e) => updateIssuer({ fiscalName: e.target.value })} /></label>
+                    <label>NIF<input value={issuer.taxId} onChange={(e) => updateIssuer({ taxId: e.target.value })} /></label>
+                    <label>Email<input value={issuer.email} onChange={(e) => updateIssuer({ email: e.target.value })} /></label>
+                    <label className="span-2">Dirección fiscal<input value={issuer.address} onChange={(e) => updateIssuer({ address: e.target.value })} /></label>
+                    <label>Teléfono<input value={issuer.phone} onChange={(e) => updateIssuer({ phone: e.target.value })} /></label>
+                    <label>Código postal<input value={issuer.postalCode} onChange={(e) => updateIssuer({ postalCode: e.target.value })} /></label>
+                    <label>Ciudad<input value={issuer.city} onChange={(e) => updateIssuer({ city: e.target.value })} /></label>
+                    <label>Provincia<input value={issuer.province} onChange={(e) => updateIssuer({ province: e.target.value })} /></label>
+                    <label className="span-2">IBAN<input value={issuer.iban} onChange={(e) => updateIssuer({ iban: e.target.value })} /></label>
                   </div>
                   <p className="saved-note">
                     {remoteConfigured
@@ -1344,7 +1764,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                           ) : (
                             <button
                               className="danger-link"
-                              onClick={() => setActivities((current) => current.filter((item) => item.id !== activity.id))}
+                              onClick={() => deleteActivity(activity.id)}
                             >
                               Eliminar
                             </button>
@@ -1477,11 +1897,11 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                 )}
               </div>
               <div className="issuer-print">
-                <strong>{issuer.fiscalName}</strong>
-                <span>{issuer.taxId}</span>
-                <span>{issuer.address}</span>
-                <span>{issuer.postalCode} {issuer.city} {issuer.province}</span>
-                <span>{issuer.email}</span>
+                <strong>{printIssuer.fiscalName}</strong>
+                <span>{printIssuer.taxId}</span>
+                <span>{printIssuer.address}</span>
+                <span>{printIssuer.postalCode} {printIssuer.city} {printIssuer.province}</span>
+                <span>{printIssuer.email}</span>
               </div>
             </header>
 
@@ -1519,7 +1939,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               <div className="payment-print">
                 <strong>Pago</strong>
                 <p>{preview.paymentMethod}</p>
-                {issuer.iban && <p>IBAN: {issuer.iban}</p>}
+                {printIssuer.iban && <p>IBAN: {printIssuer.iban}</p>}
                 {preview.dueDate && <p>Vencimiento: {preview.dueDate}</p>}
                 {preview.notes && <><strong>Observaciones</strong><p>{preview.notes}</p></>}
               </div>
