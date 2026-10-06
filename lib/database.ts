@@ -3,6 +3,9 @@ type AppPayload = {
   clients: unknown[];
   activities: unknown[];
   invoices: unknown[];
+  concepts?: unknown[];
+  expenses?: unknown[];
+  taxRecords?: unknown[];
 };
 
 function config() {
