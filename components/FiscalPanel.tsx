@@ -660,7 +660,7 @@ export default function FiscalPanel({ invoices }: Props) {
         </label>
       </header>
 
-      <div className="fiscal-alert">
+      <div className={`fiscal-alert ${nextPending?.overdue ? "overdue" : ""}`}>
         <div>
           <strong>
             {nextPending
