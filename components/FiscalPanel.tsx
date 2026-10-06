@@ -141,6 +141,16 @@ function statusClass(status: TaxStatus) {
   return status.toLowerCase().replace(" ", "-");
 }
 
+function mergeByKey<T>(remote: T[], local: T[], keyOf: (item: T) => string) {
+  const map = new Map<string, T>();
+  remote.forEach((item) => map.set(keyOf(item), item));
+  local.forEach((item) => {
+    const key = keyOf(item);
+    map.set(key, { ...(map.get(key) || {} as T), ...item });
+  });
+  return [...map.values()];
+}
+
 export default function FiscalPanel({ invoices }: Props) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -152,26 +162,80 @@ export default function FiscalPanel({ invoices }: Props) {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    try {
-      const savedExpenses = localStorage.getItem(EXPENSES_KEY);
-      const savedRecords = localStorage.getItem(TAX_RECORDS_KEY);
-      if (savedExpenses) setExpenses(JSON.parse(savedExpenses));
-      if (savedRecords) setRecords(JSON.parse(savedRecords));
-    } catch {
-      // Si falla la lectura, se mantiene un registro vacío.
+    async function loadFiscalData() {
+      let loadedExpenses: Expense[] = [];
+      let loadedRecords: TaxRecord[] = [];
+
+      try {
+        const savedExpenses = localStorage.getItem(EXPENSES_KEY);
+        const savedRecords = localStorage.getItem(TAX_RECORDS_KEY);
+        loadedExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
+        loadedRecords = savedRecords ? JSON.parse(savedRecords) : [];
+      } catch {
+        // Si falla la lectura local, intentamos recuperar desde Supabase.
+      }
+
+      const hadLocalData = loadedExpenses.length > 0 || loadedRecords.length > 0;
+
+      try {
+        const response = await fetch("/api/fiscal", { cache: "no-store" });
+        const result = await response.json();
+        if (response.ok && result.configured) {
+          const remote = result.data || {};
+          loadedExpenses = mergeByKey<Expense>(
+            remote.expenses || [],
+            loadedExpenses,
+            (item) => item.id
+          );
+          loadedRecords = mergeByKey<TaxRecord>(
+            remote.taxRecords || [],
+            loadedRecords,
+            (item) => item.key
+          );
+
+          if (hadLocalData) {
+            await fetch("/api/fiscal", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                expenses: loadedExpenses,
+                taxRecords: loadedRecords
+              })
+            });
+          }
+        }
+      } catch {
+        // La copia local sigue disponible si la sincronización remota falla.
+      }
+
+      setExpenses(loadedExpenses);
+      setRecords(loadedRecords);
+      setReady(true);
     }
-    setReady(true);
+
+    loadFiscalData();
   }, []);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-  }, [expenses, ready]);
 
-  useEffect(() => {
-    if (!ready) return;
+    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
     localStorage.setItem(TAX_RECORDS_KEY, JSON.stringify(records));
-  }, [records, ready]);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        await fetch("/api/fiscal", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expenses, taxRecords: records })
+        });
+      } catch {
+        // La copia local sigue siendo el respaldo inmediato del dispositivo.
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [expenses, records, ready]);
 
   const availableYears = useMemo(() => {
     const values = new Set<number>([new Date().getFullYear()]);
