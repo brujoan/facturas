@@ -1,6 +1,6 @@
 {
   "name": "facturas",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,7 +11,8 @@
   "dependencies": {
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
