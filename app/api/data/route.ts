@@ -18,8 +18,13 @@ export async function GET() {
   }
 
   try {
-    const data = await readAppState();
-    return NextResponse.json({ configured: true, data });
+    const result = await readAppState();
+    return NextResponse.json({
+      configured: true,
+      data: result?.data ?? null,
+      updatedAt: result?.updatedAt ?? null,
+      revision: result?.revision ?? 0
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "No se pudo leer la base de datos." }, { status: 500 });
@@ -37,8 +42,15 @@ export async function PUT(request: Request) {
 
   try {
     const payload = await request.json();
-    await writeAppState(payload);
-    return NextResponse.json({ configured: true, saved: true });
+    const result = await writeAppState(payload);
+    return NextResponse.json({
+      configured: true,
+      saved: Boolean(result?.saved),
+      changed: Boolean(result?.changed),
+      data: result?.data ?? null,
+      updatedAt: result?.updatedAt ?? null,
+      revision: result?.revision ?? 0
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "No se pudo guardar en la base de datos." }, { status: 500 });
