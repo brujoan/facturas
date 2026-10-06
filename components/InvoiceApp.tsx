@@ -126,16 +126,18 @@ const defaultActivities: ActivityPreset[] = [
 const legacyActivityIds = new Set(["prof-15", "prof-7", "sin-ret"]);
 
 function normalizeActivities(items: ActivityPreset[]) {
-  const custom = items.filter(
-    (activity) =>
-      !legacyActivityIds.has(activity.id) &&
-      !defaultActivities.some(
-        (preset) =>
-          preset.id === activity.id ||
-          preset.name.toLocaleLowerCase("es") === activity.name.toLocaleLowerCase("es")
-      )
+  const migrated = items.filter((activity) => !legacyActivityIds.has(activity.id));
+
+  const presets = defaultActivities.map((preset) => {
+    const saved = migrated.find((activity) => activity.id === preset.id);
+    return saved ? { ...preset, ...saved, id: preset.id } : preset;
+  });
+
+  const custom = migrated.filter(
+    (activity) => !defaultActivities.some((preset) => preset.id === activity.id)
   );
-  return [...defaultActivities, ...custom];
+
+  return [...presets, ...custom];
 }
 
 function mergeById<T extends { id: string }>(remote: T[], local: T[]) {
@@ -765,6 +767,12 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     flash("Actividad añadida.");
   }
 
+  function updateActivity(id: string, patch: Partial<ActivityPreset>) {
+    setActivities((current) =>
+      current.map((activity) => activity.id === id ? { ...activity, ...patch } : activity)
+    );
+  }
+
   function updateSavedConcept(id: string, patch: Partial<SavedConcept>) {
     setSavedConcepts((current) =>
       current.map((concept) => concept.id === id ? { ...concept, ...patch } : concept)
@@ -1221,7 +1229,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
                 <div className="panel">
                   <div className="section-title">
-                    <div><h2>Actividades y retenciones</h2><p className="muted">Crea presets para rellenar IVA e IRPF automáticamente en cada línea.</p></div>
+                    <div><h2>Actividades y retenciones</h2><p className="muted">Edita nombre, IVA e IRPF. Los cambios se guardan automáticamente y se usarán en nuevas líneas de factura.</p></div>
                   </div>
 
                   <div className="activity-create">
@@ -1231,13 +1239,48 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                     <button className="button primary" onClick={addActivity}>Añadir</button>
                   </div>
 
-                  <div className="activity-list">
-                    {activities.map((activity) => (
-                      <article key={activity.id}>
-                        <div><strong>{activity.name}</strong><span>IVA {activity.vat}% · IRPF {activity.withholding}%</span></div>
-                        <button className="danger-link" onClick={() => setActivities((current) => current.filter((item) => item.id !== activity.id))}>Eliminar</button>
-                      </article>
-                    ))}
+                  <div className="activity-list activity-editor-list">
+                    {activities.map((activity) => {
+                      const isBase = defaultActivities.some((preset) => preset.id === activity.id);
+                      return (
+                        <article key={activity.id}>
+                          <label className="activity-name-field">Actividad
+                            <input
+                              value={activity.name}
+                              onChange={(e) => updateActivity(activity.id, { name: e.target.value })}
+                            />
+                          </label>
+                          <label>IVA %
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={activity.vat}
+                              onChange={(e) => updateActivity(activity.id, { vat: Number(e.target.value) })}
+                            />
+                          </label>
+                          <label>IRPF %
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={activity.withholding}
+                              onChange={(e) => updateActivity(activity.id, { withholding: Number(e.target.value) })}
+                            />
+                          </label>
+                          {isBase ? (
+                            <span className="activity-base-badge">Actividad base</span>
+                          ) : (
+                            <button
+                              className="danger-link"
+                              onClick={() => setActivities((current) => current.filter((item) => item.id !== activity.id))}
+                            >
+                              Eliminar
+                            </button>
+                          )}
+                        </article>
+                      );
+                    })}
                   </div>
                   <p className="legal-note">La aplicación calcula los importes según los porcentajes que indiques; no determina por sí sola cuándo una retención es fiscalmente aplicable.</p>
                 </div>
