@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import FiscalPanel from "@/components/FiscalPanel";
 
-type Tab = "facturas" | "nueva" | "clientes" | "config";
+type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
 
 type Issuer = {
@@ -199,7 +200,12 @@ function groupTax(lines: InvoiceLine[], field: "vat" | "withholding") {
   return [...map.entries()].sort((a, b) => a[0] - b[0]);
 }
 
-export default function InvoiceApp() {
+type InvoiceAppProps = {
+  version: string;
+  deployment: string;
+};
+
+export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [tab, setTab] = useState<Tab>("facturas");
   const [ready, setReady] = useState(false);
   const [issuer, setIssuer] = useState<Issuer>(blankIssuer);
@@ -520,13 +526,22 @@ export default function InvoiceApp() {
               <button className={tab === "clientes" ? "active" : ""} onClick={() => setTab("clientes")}>
                 <span>♙</span> Clientes
               </button>
+              <button className={tab === "fiscal" ? "active" : ""} onClick={() => setTab("fiscal")}>
+                <span>◫</span> Trimestrales
+              </button>
               <button className={tab === "config" ? "active" : ""} onClick={() => setTab("config")}>
                 <span>⚙</span> Configuración
               </button>
             </nav>
           </div>
 
-          <button className="logout" onClick={logout}>Cerrar sesión</button>
+          <div className="sidebar-footer">
+            <div className="version-badge">
+              <strong>v{version}</strong>
+              <span>deploy {deployment}</span>
+            </div>
+            <button className="logout" onClick={logout}>Cerrar sesión</button>
+          </div>
         </aside>
 
         <main className="content">
@@ -822,6 +837,8 @@ export default function InvoiceApp() {
             </section>
           )}
 
+          {tab === "fiscal" && <FiscalPanel invoices={invoices} />}
+
           {tab === "config" && (
             <section>
               <header className="page-header">
@@ -874,6 +891,15 @@ export default function InvoiceApp() {
                     ))}
                   </div>
                   <p className="legal-note">La aplicación calcula los importes según los porcentajes que indiques; no determina por sí sola cuándo una retención es fiscalmente aplicable.</p>
+                </div>
+
+                <div className="panel version-panel">
+                  <h2>Versión de la aplicación</h2>
+                  <div className="version-details">
+                    <span><strong>Versión</strong><b>v{version}</b></span>
+                    <span><strong>Deployment</strong><b>{deployment}</b></span>
+                  </div>
+                  <p className="saved-note">Cada actualización funcional llevará una versión nueva. El identificador de deployment te permite saber exactamente qué build estás usando.</p>
                 </div>
 
                 <div className="panel data-warning">
