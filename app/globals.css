@@ -868,3 +868,98 @@ h3 { margin-bottom: 8px; }
   opacity: 0;
   pointer-events: none;
 }
+
+
+/* Privacidad del resumen facturado */
+.billing-value {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.billing-value strong { margin-top: 8px; }
+.billing-value span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+}
+.billing-history-wrap { margin-bottom: 20px; }
+.billing-history-toggle { margin-bottom: 10px; }
+.monthly-history { padding: 18px; }
+.monthly-history .section-title { margin-bottom: 12px; }
+.monthly-history-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 9px;
+}
+.monthly-history-grid article {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fafbfc;
+}
+.monthly-history-grid span,
+.monthly-history-grid strong,
+.monthly-history-grid small { display: block; }
+.monthly-history-grid span {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: capitalize;
+}
+.monthly-history-grid strong {
+  margin-top: 6px;
+  font-size: 14px;
+}
+.monthly-history-grid small {
+  margin-top: 4px;
+  color: #8b95a3;
+  font-size: 9px;
+}
+
+/* Editor de conceptos */
+.saved-concepts-editor { display: grid; gap: 10px; }
+.saved-concepts-editor article {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.6fr) minmax(220px, 1.4fr) repeat(3, minmax(90px, .65fr)) auto;
+  gap: 9px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbfc;
+}
+.saved-concepts-editor label {
+  margin: 0;
+  font-size: 10px;
+}
+.saved-concepts-editor input,
+.saved-concepts-editor select {
+  margin-top: 5px;
+  background: white;
+}
+.saved-concepts-editor .danger-link {
+  align-self: end;
+  margin-bottom: 5px;
+}
+
+.fiscal-start-note { margin-bottom: 12px; }
+
+@media (max-width: 1200px) {
+  .monthly-history-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .saved-concepts-editor article { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .saved-concepts-editor .concept-name { grid-column: span 2; }
+}
+
+@media (max-width: 700px) {
+  .monthly-history-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .saved-concepts-editor article { grid-template-columns: 1fr; }
+  .saved-concepts-editor .concept-name { grid-column: auto; }
+}
