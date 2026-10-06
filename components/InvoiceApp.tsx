@@ -248,6 +248,8 @@ type InvoiceAppProps = {
 export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [tab, setTab] = useState<Tab>("facturas");
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("month");
+  const [billingVisible, setBillingVisible] = useState(false);
+  const [billingHistoryVisible, setBillingHistoryVisible] = useState(false);
   const [ready, setReady] = useState(false);
   const [issuer, setIssuer] = useState<Issuer>(blankIssuer);
   const [clients, setClients] = useState<Client[]>([]);
@@ -425,6 +427,29 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         return sum + t.base + t.vat - t.withholding;
       }, 0);
   }, [invoices, billingPeriod]);
+
+  const monthlyBillingHistory = useMemo(() => {
+    const groups = new Map<string, { year: number; month: number; invoices: number; total: number }>();
+
+    invoices
+      .filter((invoice) => invoice.status !== "Anulada" && invoice.issueDate)
+      .forEach((invoice) => {
+        const year = Number(invoice.issueDate.slice(0, 4));
+        const month = Number(invoice.issueDate.slice(5, 7));
+        if (!year || !month) return;
+
+        const key = `${year}-${String(month).padStart(2, "0")}`;
+        const current = groups.get(key) || { year, month, invoices: 0, total: 0 };
+        const t = totals(invoice);
+        current.invoices += 1;
+        current.total += t.base + t.vat - t.withholding;
+        groups.set(key, current);
+      });
+
+    return [...groups.values()]
+      .sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month))
+      .slice(0, 18);
+  }, [invoices]);
 
   function flash(message: string) {
     setNotice(message);
@@ -717,6 +742,17 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     flash("Actividad añadida.");
   }
 
+  function updateSavedConcept(id: string, patch: Partial<SavedConcept>) {
+    setSavedConcepts((current) =>
+      current.map((concept) => concept.id === id ? { ...concept, ...patch } : concept)
+    );
+  }
+
+  function deleteSavedConcept(id: string) {
+    setSavedConcepts((current) => current.filter((concept) => concept.id !== id));
+    flash("Concepto eliminado de sugerencias.");
+  }
+
   async function logout() {
     await fetch("/api/logout", { method: "POST" });
     window.location.href = "/login";
@@ -807,7 +843,14 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                       <option value="total">Total</option>
                     </select>
                   </div>
-                  <strong>{currency(billedAmount)}</strong>
+                  <button
+                    className="billing-value"
+                    onClick={() => setBillingVisible((visible) => !visible)}
+                    aria-label={billingVisible ? "Ocultar facturación" : "Mostrar facturación"}
+                  >
+                    <strong>{billingVisible ? currency(billedAmount) : "•••••• €"}</strong>
+                    <span>{billingVisible ? "Ocultar" : "Mostrar"}</span>
+                  </button>
                 </article>
                 <article className="stat-card">
                   <span>Facturas</span>
@@ -821,6 +864,45 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                   <span>Cobradas</span>
                   <strong>{invoices.filter((item) => item.status === "Cobrada").length}</strong>
                 </article>
+              </div>
+
+              <div className="billing-history-wrap">
+                <button
+                  className="button secondary billing-history-toggle"
+                  onClick={() => setBillingHistoryVisible((visible) => !visible)}
+                >
+                  {billingHistoryVisible ? "Ocultar historial mensual" : "Ver historial mensual"}
+                </button>
+
+                {billingHistoryVisible && (
+                  <div className="panel monthly-history">
+                    <div className="section-title">
+                      <div>
+                        <h2>Historial mensual</h2>
+                        <p className="muted">Resumen rápido de los meses con facturación.</p>
+                      </div>
+                    </div>
+                    {monthlyBillingHistory.length === 0 ? (
+                      <p className="muted">Todavía no hay meses con facturas.</p>
+                    ) : (
+                      <div className="monthly-history-grid">
+                        {monthlyBillingHistory.map((item) => {
+                          const label = new Date(item.year, item.month - 1, 1).toLocaleDateString("es-ES", {
+                            month: "long",
+                            year: "numeric"
+                          });
+                          return (
+                            <article key={`${item.year}-${item.month}`}>
+                              <span>{label}</span>
+                              <strong>{billingVisible ? currency(item.total) : "•••••• €"}</strong>
+                              <small>{item.invoices} {item.invoices === 1 ? "factura" : "facturas"}</small>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="panel table-panel">
@@ -1131,6 +1213,75 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                     ))}
                   </div>
                   <p className="legal-note">La aplicación calcula los importes según los porcentajes que indiques; no determina por sí sola cuándo una retención es fiscalmente aplicable.</p>
+                </div>
+
+                <div className="panel">
+                  <div className="section-title">
+                    <div>
+                      <h2>Conceptos guardados</h2>
+                      <p className="muted">Se crean automáticamente al usarlos en una factura. Aquí puedes corregirlos o actualizar sus valores habituales.</p>
+                    </div>
+                  </div>
+
+                  {savedConcepts.length === 0 ? (
+                    <p className="muted">Todavía no hay conceptos guardados.</p>
+                  ) : (
+                    <div className="saved-concepts-editor">
+                      {savedConcepts.map((concept) => (
+                        <article key={concept.id}>
+                          <label className="concept-name">Concepto
+                            <input
+                              value={concept.description}
+                              onChange={(e) => updateSavedConcept(concept.id, { description: e.target.value })}
+                            />
+                          </label>
+                          <label>Actividad
+                            <select
+                              value={concept.activityId}
+                              onChange={(e) => {
+                                const activity = activities.find((item) => item.id === e.target.value);
+                                updateSavedConcept(concept.id, {
+                                  activityId: e.target.value,
+                                  ...(activity ? { vat: activity.vat, withholding: activity.withholding } : {})
+                                });
+                              }}
+                            >
+                              <option value="">Sin actividad</option>
+                              {activities.map((activity) => (
+                                <option key={activity.id} value={activity.id}>{activity.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>Precio habitual
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={concept.unitPrice}
+                              onChange={(e) => updateSavedConcept(concept.id, { unitPrice: Number(e.target.value) })}
+                            />
+                          </label>
+                          <label>IVA %
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={concept.vat}
+                              onChange={(e) => updateSavedConcept(concept.id, { vat: Number(e.target.value) })}
+                            />
+                          </label>
+                          <label>IRPF %
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={concept.withholding}
+                              onChange={(e) => updateSavedConcept(concept.id, { withholding: Number(e.target.value) })}
+                            />
+                          </label>
+                          <button className="danger-link" onClick={() => deleteSavedConcept(concept.id)}>Eliminar</button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  <p className="saved-note">Los cambios se guardan automáticamente y se usarán la próxima vez que selecciones ese concepto.</p>
                 </div>
 
                 <div className="panel version-panel">
