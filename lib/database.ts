@@ -1,25 +1,53 @@
+import { sign } from "crypto";
+
+export type SyncScope = "default" | "fiscal";
+
 type AppPayload = {
-  issuer: unknown;
-  clients: unknown[];
-  activities: unknown[];
-  invoices: unknown[];
+  issuer?: unknown;
+  clients?: unknown[];
+  activities?: unknown[];
+  invoices?: unknown[];
   concepts?: unknown[];
   expenses?: unknown[];
   taxRecords?: unknown[];
 };
 
 function config() {
-  const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  return url && key ? { url, key } : null;
+  const url = process.env.SUPABASE_SYNC_URL;
+  const privateKey = process.env.SYNC_SIGNING_PRIVATE_KEY;
+  return url && privateKey ? { url, privateKey } : null;
 }
 
-function headers(key: string) {
-  return {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json"
-  };
+function signature(privateKey: string, method: "GET" | "PUT", scope: SyncScope, body: string, timestamp: string) {
+  const canonical = `${timestamp}.${method}.${scope}.${body}`;
+  return sign("sha256", Buffer.from(canonical), {
+    key: privateKey,
+    dsaEncoding: "ieee-p1363"
+  }).toString("base64");
+}
+
+async function requestState(scope: SyncScope, method: "GET" | "PUT", payload?: AppPayload) {
+  const cfg = config();
+  if (!cfg) return null;
+
+  const body = method === "PUT" ? JSON.stringify({ payload }) : "";
+  const timestamp = String(Date.now());
+  const response = await fetch(`${cfg.url}?scope=${scope}`, {
+    method,
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      "x-sync-timestamp": timestamp,
+      "x-sync-signature": signature(cfg.privateKey, method, scope, body, timestamp)
+    },
+    ...(method === "PUT" ? { body } : {})
+  });
+
+  if (!response.ok) {
+    throw new Error(`Supabase sync failed: ${response.status} ${await response.text()}`);
+  }
+
+  return response.json();
 }
 
 export function isDatabaseConfigured() {
@@ -27,44 +55,21 @@ export function isDatabaseConfigured() {
 }
 
 export async function readAppState(): Promise<AppPayload | null> {
-  const cfg = config();
-  if (!cfg) return null;
-
-  const response = await fetch(
-    `${cfg.url}/rest/v1/app_state?id=eq.default&select=payload&limit=1`,
-    { headers: headers(cfg.key), cache: "no-store" }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Supabase read failed: ${response.status} ${await response.text()}`);
-  }
-
-  const rows = (await response.json()) as Array<{ payload?: AppPayload }>;
-  return rows[0]?.payload ?? null;
+  const result = await requestState("default", "GET");
+  return result?.data ?? null;
 }
 
 export async function writeAppState(payload: AppPayload) {
-  const cfg = config();
-  if (!cfg) return false;
+  const result = await requestState("default", "PUT", payload);
+  return Boolean(result?.saved);
+}
 
-  const response = await fetch(`${cfg.url}/rest/v1/app_state?on_conflict=id`, {
-    method: "POST",
-    headers: {
-      ...headers(cfg.key),
-      Prefer: "resolution=merge-duplicates,return=minimal"
-    },
-    body: JSON.stringify([
-      {
-        id: "default",
-        payload,
-        updated_at: new Date().toISOString()
-      }
-    ])
-  });
+export async function readFiscalState(): Promise<AppPayload | null> {
+  const result = await requestState("fiscal", "GET");
+  return result?.data ?? null;
+}
 
-  if (!response.ok) {
-    throw new Error(`Supabase write failed: ${response.status} ${await response.text()}`);
-  }
-
-  return true;
+export async function writeFiscalState(payload: AppPayload) {
+  const result = await requestState("fiscal", "PUT", payload);
+  return Boolean(result?.saved);
 }
