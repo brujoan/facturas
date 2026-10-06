@@ -16,6 +16,8 @@ export type AppPayload = {
   expenses?: unknown[];
   taxRecords?: unknown[];
   deletedExpenseIds?: string[];
+  recurringExpenses?: unknown[];
+  deletedRecurringExpenseIds?: string[];
 };
 
 export type SyncResult = {
