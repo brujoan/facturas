@@ -691,7 +691,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     const saved: Invoice = {
       ...draft,
       number,
-      status: draft.status === "Borrador" ? "Emitida" : draft.status,
+      status: draft.status,
       createdAt: editingId
         ? invoices.find((item) => item.id === editingId)?.createdAt || draft.createdAt
         : new Date().toISOString()
