@@ -19,27 +19,33 @@ Gestor privado de facturación creado con Next.js.
 - Forma de pago, IBAN y notas.
 - Vista preparada para imprimir o guardar como PDF.
 - Duplicado y edición de facturas.
+- Persistencia remota opcional con Supabase y copia local de respaldo.
 
 ## Ejecutar en local
 
 1. Instala Node.js 20 o superior.
 2. Ejecuta `npm install`.
 3. Copia `.env.example` a `.env.local`.
-4. Cambia:
+4. Configura:
    - `APP_PASSWORD`: contraseña de acceso.
    - `COOKIE_SECRET`: cadena aleatoria larga (mínimo recomendado: 32 caracteres).
-5. Ejecuta `npm run dev`.
-6. Abre `http://localhost:3000`.
+   - `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` si quieres persistencia remota.
+5. Si usas Supabase, ejecuta el SQL de `supabase/schema.sql` en el proyecto.
+6. Ejecuta `npm run dev`.
+7. Abre `http://localhost:3000`.
 
-## Despliegue
+## Despliegue recomendado
 
-Puede desplegarse en Vercel u otro servidor compatible con Next.js. Configura allí las variables `APP_PASSWORD` y `COOKIE_SECRET`; no subas el archivo `.env.local` al repositorio.
+El proyecto está preparado para Vercel. Vincula el repositorio `brujoan/facturas` y configura las variables de entorno anteriores.
 
-## Persistencia actual
+La `SUPABASE_SERVICE_ROLE_KEY` solo se utiliza en rutas del servidor y nunca debe exponerse con un prefijo `NEXT_PUBLIC_`.
 
-En esta primera versión, clientes, configuración e invoices se guardan en `localStorage` del navegador. Esto permite usar la app sin configurar una base de datos, pero **no sirve como copia de seguridad ni para sincronizar varios dispositivos**.
+## Persistencia
 
-La siguiente mejora recomendada es una base de datos (por ejemplo PostgreSQL/Supabase) con copias de seguridad, manteniendo el acceso protegido en servidor.
+- Sin Supabase: la aplicación funciona con `localStorage` en el navegador.
+- Con Supabase: facturas, clientes, actividades y configuración se guardan en PostgreSQL y se sincronizan entre dispositivos. El navegador conserva una copia local como respaldo operativo.
+- La tabla necesaria está definida en `supabase/schema.sql`.
+- La tabla tiene RLS activado y no expone políticas públicas; la escritura/lectura se realiza exclusivamente desde el servidor de Next.js.
 
 ## Nota fiscal
 
