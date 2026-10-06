@@ -37,6 +37,22 @@ type Expense = {
   vatDeductiblePct: number;
   hasReceipt: boolean;
   notes: string;
+  recurringExpenseId?: string;
+  recurringMonth?: string;
+  updatedAt?: string;
+};
+
+type RecurringExpense = {
+  id: string;
+  supplier: string;
+  concept: string;
+  monthlyAmount: number;
+  vatRate: number;
+  irpfDeductiblePct: number;
+  vatDeductiblePct: number;
+  startMonth: string;
+  endMonth: string;
+  active: boolean;
   updatedAt?: string;
 };
 
@@ -60,6 +76,8 @@ type Props = {
 const EXPENSES_KEY = "facturas_expenses_v1";
 const TAX_RECORDS_KEY = "facturas_tax_records_v1";
 const DELETED_EXPENSES_KEY = "facturas_deleted_expenses_v1";
+const RECURRING_EXPENSES_KEY = "facturas_recurring_expenses_v1";
+const DELETED_RECURRING_EXPENSES_KEY = "facturas_deleted_recurring_expenses_v1";
 const START_YEAR = 2026;
 
 function uid() {
@@ -158,6 +176,58 @@ function blankExpense(): Expense {
   };
 }
 
+function blankRecurringExpense(): RecurringExpense {
+  return {
+    id: "",
+    supplier: "Tesorería General de la Seguridad Social",
+    concept: "Cuota autónomos",
+    monthlyAmount: 200,
+    vatRate: 0,
+    irpfDeductiblePct: 100,
+    vatDeductiblePct: 0,
+    startMonth: "2026-08",
+    endMonth: "",
+    active: true
+  };
+}
+
+function monthKeysFrom(startMonth: string, endMonth: string) {
+  if (!startMonth || !endMonth || startMonth > endMonth) return [];
+  const [startYear, startMonthNumber] = startMonth.split("-").map(Number);
+  const [endYear, endMonthNumber] = endMonth.split("-").map(Number);
+  const values: string[] = [];
+
+  let year = startYear;
+  let month = startMonthNumber;
+  while (year < endYear || (year === endYear && month <= endMonthNumber)) {
+    values.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return values;
+}
+
+function monthKeysForQuarter(year: number, quarter: number) {
+  const startMonth = (quarter - 1) * 3 + 1;
+  return [0, 1, 2].map((offset) =>
+    `${year}-${String(startMonth + offset).padStart(2, "0")}`
+  );
+}
+
+function recurringApplies(item: RecurringExpense, monthKey: string) {
+  if (!item.active) return false;
+  if (item.startMonth && monthKey < item.startMonth) return false;
+  if (item.endMonth && monthKey > item.endMonth) return false;
+  return true;
+}
+
+function recurringExpenseId(templateId: string, monthKey: string) {
+  return `recurring-${templateId}-${monthKey}`;
+}
+
 function emptyRecord(year: number, quarter: number): TaxRecord {
   return {
     key: `${year}-Q${quarter}`,
@@ -215,7 +285,10 @@ export default function FiscalPanel({ invoices }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [records, setRecords] = useState<TaxRecord[]>([]);
   const [deletedExpenseIds, setDeletedExpenseIds] = useState<string[]>([]);
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+  const [deletedRecurringExpenseIds, setDeletedRecurringExpenseIds] = useState<string[]>([]);
   const [expenseDraft, setExpenseDraft] = useState<Expense>(blankExpense());
+  const [recurringDraft, setRecurringDraft] = useState<RecurringExpense>(blankRecurringExpense());
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
 
