@@ -137,6 +137,21 @@ function normalizeActivities(items: ActivityPreset[]) {
   return [...defaultActivities, ...custom];
 }
 
+function mergeById<T extends { id: string }>(remote: T[], local: T[]) {
+  const map = new Map<string, T>();
+  remote.forEach((item) => map.set(item.id, item));
+  local.forEach((item) => map.set(item.id, { ...(map.get(item.id) || {} as T), ...item }));
+  return [...map.values()];
+}
+
+function mergeIssuer(remote: Partial<Issuer> | undefined, local: Issuer) {
+  const merged = { ...blankIssuer, ...(remote || {}) };
+  (Object.keys(local) as Array<keyof Issuer>).forEach((key) => {
+    if (local[key] !== "") merged[key] = local[key];
+  });
+  return merged;
+}
+
 function uid() {
   return crypto.randomUUID();
 }
@@ -269,16 +284,42 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         const result = await response.json();
         if (response.ok && result.configured) {
           setRemoteConfigured(true);
-          if (result.data) {
-            loadedIssuer = result.data.issuer || blankIssuer;
-            loadedClients = result.data.clients || [];
-            loadedActivities = normalizeActivities(result.data.activities?.length ? result.data.activities : defaultActivities);
-            loadedInvoices = result.data.invoices || [];
-            loadedConcepts = result.data.concepts || loadedConcepts;
+
+          const remote = result.data || {};
+          const mergedIssuer = mergeIssuer(remote.issuer, loadedIssuer);
+          const mergedClients = mergeById<Client>(remote.clients || [], loadedClients);
+          const mergedActivities = normalizeActivities(mergeById<ActivityPreset>(remote.activities || [], loadedActivities));
+          const mergedInvoices = mergeById<Invoice>(remote.invoices || [], loadedInvoices);
+          const mergedConcepts = mergeById<SavedConcept>(remote.concepts || [], loadedConcepts);
+
+          loadedIssuer = mergedIssuer;
+          loadedClients = mergedClients;
+          loadedActivities = mergedActivities;
+          loadedInvoices = mergedInvoices;
+          loadedConcepts = mergedConcepts;
+
+          const localHadData =
+            Boolean(loadedIssuer.fiscalName || loadedIssuer.taxId) ||
+            loadedClients.length > 0 ||
+            loadedInvoices.length > 0 ||
+            loadedConcepts.length > 0;
+
+          if (localHadData) {
+            await fetch("/api/data", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                issuer: loadedIssuer,
+                clients: loadedClients,
+                activities: loadedActivities,
+                invoices: loadedInvoices,
+                concepts: loadedConcepts
+              })
+            });
           }
         }
       } catch {
-        // Si la base de datos no está disponible, la app sigue funcionando en local.
+        // Si la base de datos no está disponible, la copia local sigue funcionando.
       }
 
       setIssuer(loadedIssuer);
