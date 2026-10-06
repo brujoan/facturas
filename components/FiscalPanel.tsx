@@ -443,7 +443,7 @@ export default function FiscalPanel({ invoices }: Props) {
   const nextPending = useMemo(() => {
     const today = todayISO();
     const candidates: Array<{ label: string; due: string; quarter: number; model: string }> = [];
-    for (let q = 1; q <= 4; q += 1) {
+    for (const q of visibleQuarters) {
       const record = records.find((item) => item.key === `${year}-Q${q}`) || emptyRecord(year, q);
       const due = deadlineISO(year, q);
       if (due < today) continue;
@@ -455,7 +455,7 @@ export default function FiscalPanel({ invoices }: Props) {
       }
     }
     return candidates.sort((a, b) => a.due.localeCompare(b.due))[0] || null;
-  }, [records, year]);
+  }, [records, year, visibleQuarters]);
 
   function flash(message: string) {
     setNotice(message);
@@ -523,7 +523,14 @@ export default function FiscalPanel({ invoices }: Props) {
         </div>
         <label className="year-select">
           Ejercicio
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+          <select
+            value={year}
+            onChange={(e) => {
+              const nextYear = Number(e.target.value);
+              setYear(nextYear);
+              if (nextYear === START_YEAR && quarter < 3) setQuarter(3);
+            }}
+          >
             {availableYears.map((value) => (
               <option key={value} value={value}>{value}</option>
             ))}
