@@ -53,6 +53,20 @@ export async function PUT(request: Request) {
     });
   } catch (error) {
     console.error(error);
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("duplicate_invoice_number:")) {
+      const number = message.split("duplicate_invoice_number:")[1] || "";
+      return NextResponse.json(
+        { error: `El número de factura ${number} ya existe. Revisa la numeración.` },
+        { status: 409 }
+      );
+    }
+    if (message.includes("sync_conflict_retry_exhausted")) {
+      return NextResponse.json(
+        { error: "Conflicto de sincronización. Los datos locales se conservan; vuelve a intentar." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: "No se pudo guardar en la base de datos." }, { status: 500 });
   }
 }
