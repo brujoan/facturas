@@ -372,7 +372,8 @@ export async function buildInvoicePdf(data: InvoicePdfData) {
 
 export async function downloadInvoicePdf(data: InvoicePdfData) {
   const { bytes, filename } = await buildInvoicePdf(data);
-  const blob = new Blob([bytes], { type: "application/pdf" });
+  const pdfBuffer = new Uint8Array(bytes).buffer;
+  const blob = new Blob([pdfBuffer], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
