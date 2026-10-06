@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import FiscalPanel from "@/components/FiscalPanel";
 
 type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
 type InvoiceMode = "normal" | "monthly";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
+type SyncStatus = "local" | "sincronizando" | "sincronizado" | "error" | "sesion";
 
 type Issuer = {
   fiscalName: string;
@@ -31,6 +32,7 @@ type Client = {
   email: string;
   phone?: string;
   notes?: string;
+  updatedAt?: string;
 };
 
 type ActivityPreset = {
@@ -38,6 +40,7 @@ type ActivityPreset = {
   name: string;
   vat: number;
   withholding: number;
+  updatedAt?: string;
 };
 
 type InvoiceLine = {
@@ -59,6 +62,7 @@ type SavedConcept = {
   vat: number;
   withholding: number;
   lastUsedAt: string;
+  updatedAt?: string;
 };
 
 type Invoice = {
@@ -77,15 +81,23 @@ type Invoice = {
   paymentMethod: string;
   status: Status;
   internalNote?: string;
+  issuerSnapshot?: Issuer;
+  clientSnapshot?: Client;
   createdAt: string;
+  updatedAt?: string;
 };
 
 const storage = {
   issuer: "facturas_issuer_v1",
+  issuerUpdatedAt: "facturas_issuer_updated_at_v1",
   clients: "facturas_clients_v1",
   activities: "facturas_activities_v1",
   invoices: "facturas_invoices_v1",
-  concepts: "facturas_concepts_v1"
+  concepts: "facturas_concepts_v1",
+  deletedClients: "facturas_deleted_clients_v1",
+  deletedInvoices: "facturas_deleted_invoices_v1",
+  deletedActivities: "facturas_deleted_activities_v1",
+  deletedConcepts: "facturas_deleted_concepts_v1"
 };
 
 const blankIssuer: Issuer = {
@@ -145,19 +157,63 @@ function normalizeActivities(items: ActivityPreset[]) {
   return [...presets, ...custom];
 }
 
-function mergeById<T extends { id: string }>(remote: T[], local: T[]) {
+function nowISO() {
+  return new Date().toISOString();
+}
+
+function timestamp(value?: string) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mergeById<T extends { id: string; updatedAt?: string }>(remote: T[], local: T[]) {
   const map = new Map<string, T>();
   remote.forEach((item) => map.set(item.id, item));
-  local.forEach((item) => map.set(item.id, { ...(map.get(item.id) || {} as T), ...item }));
+
+  local.forEach((item) => {
+    const existing = map.get(item.id);
+    if (!existing) {
+      map.set(item.id, { ...item, updatedAt: item.updatedAt || nowISO() });
+      return;
+    }
+
+    const localTs = timestamp(item.updatedAt);
+    const remoteTs = timestamp(existing.updatedAt);
+    if (localTs > remoteTs) map.set(item.id, { ...existing, ...item });
+  });
+
   return [...map.values()];
 }
 
-function mergeIssuer(remote: Partial<Issuer> | undefined, local: Issuer) {
-  const merged = { ...blankIssuer, ...(remote || {}) };
-  (Object.keys(local) as Array<keyof Issuer>).forEach((key) => {
-    if (local[key] !== "") merged[key] = local[key];
-  });
-  return merged;
+function mergeIds(remote: string[] = [], local: string[] = []) {
+  return [...new Set([...remote, ...local])];
+}
+
+function sameJson(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function mergeIssuerState(
+  remote: Partial<Issuer> | undefined,
+  remoteUpdatedAt: string | undefined,
+  local: Issuer,
+  localUpdatedAt: string
+) {
+  if (!remote || Object.keys(remote).length === 0) {
+    return {
+      issuer: local,
+      updatedAt: localUpdatedAt || (Object.values(local).some(Boolean) ? nowISO() : "")
+    };
+  }
+
+  if (timestamp(localUpdatedAt) > timestamp(remoteUpdatedAt)) {
+    return { issuer: local, updatedAt: localUpdatedAt };
+  }
+
+  return {
+    issuer: { ...blankIssuer, ...remote },
+    updatedAt: remoteUpdatedAt || nowISO()
+  };
 }
 
 function uid() {
@@ -165,7 +221,12 @@ function uid() {
 }
 
 function dateISO() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("-");
 }
 
 function monthRange(date: string) {
@@ -175,6 +236,10 @@ function monthRange(date: string) {
   const lastDay = new Date(year, month, 0).getDate();
   const last = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
   return { first, last };
+}
+
+function money(value: number) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 }
 
 function emptyLine(activity?: ActivityPreset): InvoiceLine {
@@ -192,6 +257,7 @@ function emptyLine(activity?: ActivityPreset): InvoiceLine {
 
 function emptyInvoice(activity?: ActivityPreset): Invoice {
   const today = dateISO();
+  const stamp = nowISO();
   return {
     id: uid(),
     number: "",
@@ -208,7 +274,8 @@ function emptyInvoice(activity?: ActivityPreset): Invoice {
     paymentMethod: "Transferencia bancaria",
     status: "Borrador",
     internalNote: "",
-    createdAt: new Date().toISOString()
+    createdAt: stamp,
+    updatedAt: stamp
   };
 }
 
@@ -216,24 +283,28 @@ function currency(value: number) {
   return new Intl.NumberFormat("es-ES", {
     style: "currency",
     currency: "EUR"
-  }).format(value || 0);
+  }).format(money(value));
 }
 
 function lineBase(line: InvoiceLine) {
-  return Number(line.quantity || 0) * Number(line.unitPrice || 0);
+  return money(Number(line.quantity || 0) * Number(line.unitPrice || 0));
 }
 
 function totals(invoice: Invoice) {
   return invoice.lines.reduce(
     (acc, line) => {
       const base = lineBase(line);
-      acc.base += base;
-      acc.vat += base * (Number(line.vat || 0) / 100);
-      acc.withholding += base * (Number(line.withholding || 0) / 100);
+      acc.base = money(acc.base + base);
+      acc.vat = money(acc.vat + money(base * (Number(line.vat || 0) / 100)));
+      acc.withholding = money(acc.withholding + money(base * (Number(line.withholding || 0) / 100)));
       return acc;
     },
     { base: 0, vat: 0, withholding: 0 }
   );
+}
+
+function invoiceCountsAsIssued(invoice: Invoice) {
+  return invoice.status === "Emitida" || invoice.status === "Cobrada";
 }
 
 function nextNumber(series: string, invoices: Invoice[]) {
@@ -255,8 +326,8 @@ function groupTax(lines: InvoiceLine[], field: "vat" | "withholding") {
     if (field === "withholding" && rate === 0) continue;
     const base = lineBase(line);
     const current = map.get(rate) || { base: 0, amount: 0 };
-    current.base += base;
-    current.amount += base * (rate / 100);
+    current.base = money(current.base + base);
+    current.amount = money(current.amount + money(base * (rate / 100)));
     map.set(rate, current);
   }
   return [...map.entries()].sort((a, b) => a[0] - b[0]);
@@ -274,10 +345,15 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [billingHistoryVisible, setBillingHistoryVisible] = useState(false);
   const [ready, setReady] = useState(false);
   const [issuer, setIssuer] = useState<Issuer>(blankIssuer);
+  const [issuerUpdatedAt, setIssuerUpdatedAt] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
   const [activities, setActivities] = useState<ActivityPreset[]>(defaultActivities);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [savedConcepts, setSavedConcepts] = useState<SavedConcept[]>([]);
+  const [deletedClientIds, setDeletedClientIds] = useState<string[]>([]);
+  const [deletedInvoiceIds, setDeletedInvoiceIds] = useState<string[]>([]);
+  const [deletedActivityIds, setDeletedActivityIds] = useState<string[]>([]);
+  const [deletedConceptIds, setDeletedConceptIds] = useState<string[]>([]);
   const [draft, setDraft] = useState<Invoice>(() => emptyInvoice(defaultActivities[0]));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Invoice | null>(null);
@@ -285,6 +361,78 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [activityDraft, setActivityDraft] = useState({ name: "", vat: 21, withholding: 0 });
   const [notice, setNotice] = useState("");
   const [remoteConfigured, setRemoteConfigured] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("local");
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
+  const skipNextSyncRef = useRef(false);
+
+  function mainPayload() {
+    return {
+      issuer,
+      issuerUpdatedAt,
+      clients,
+      activities,
+      invoices,
+      concepts: savedConcepts,
+      deletedClientIds,
+      deletedInvoiceIds,
+      deletedActivityIds,
+      deletedConceptIds
+    };
+  }
+
+  function applyRemoteState(remote: any) {
+    if (!remote) return false;
+
+    const nextDeletedClients = mergeIds(remote.deletedClientIds || [], deletedClientIds);
+    const nextDeletedInvoices = mergeIds(remote.deletedInvoiceIds || [], deletedInvoiceIds);
+    const nextDeletedActivities = mergeIds(remote.deletedActivityIds || [], deletedActivityIds);
+    const nextDeletedConcepts = mergeIds(remote.deletedConceptIds || [], deletedConceptIds);
+
+    const nextClients = mergeById<Client>(remote.clients || [], clients)
+      .filter((item) => !nextDeletedClients.includes(item.id));
+    const nextActivities = normalizeActivities(
+      mergeById<ActivityPreset>(remote.activities || [], activities)
+        .filter((item) => !nextDeletedActivities.includes(item.id))
+    );
+    const nextInvoices = mergeById<Invoice>(remote.invoices || [], invoices)
+      .filter((item) => !nextDeletedInvoices.includes(item.id));
+    const nextConcepts = mergeById<SavedConcept>(remote.concepts || [], savedConcepts)
+      .filter((item) => !nextDeletedConcepts.includes(item.id));
+
+    const issuerMerge = mergeIssuerState(
+      remote.issuer,
+      remote.issuerUpdatedAt,
+      issuer,
+      issuerUpdatedAt
+    );
+
+    const changed =
+      !sameJson(nextClients, clients) ||
+      !sameJson(nextActivities, activities) ||
+      !sameJson(nextInvoices, invoices) ||
+      !sameJson(nextConcepts, savedConcepts) ||
+      !sameJson(nextDeletedClients, deletedClientIds) ||
+      !sameJson(nextDeletedInvoices, deletedInvoiceIds) ||
+      !sameJson(nextDeletedActivities, deletedActivityIds) ||
+      !sameJson(nextDeletedConcepts, deletedConceptIds) ||
+      !sameJson(issuerMerge.issuer, issuer) ||
+      issuerMerge.updatedAt !== issuerUpdatedAt;
+
+    if (!changed) return false;
+
+    skipNextSyncRef.current = true;
+    setClients(nextClients);
+    setActivities(nextActivities);
+    setInvoices(nextInvoices);
+    setSavedConcepts(nextConcepts);
+    setDeletedClientIds(nextDeletedClients);
+    setDeletedInvoiceIds(nextDeletedInvoices);
+    setDeletedActivityIds(nextDeletedActivities);
+    setDeletedConceptIds(nextDeletedConcepts);
+    setIssuer(issuerMerge.issuer);
+    setIssuerUpdatedAt(issuerMerge.updatedAt);
+    return true;
+  }
 
   useEffect(() => {
     const read = <T,>(key: string, fallback: T): T => {
@@ -298,91 +446,199 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
     async function load() {
       let loadedIssuer = read<Issuer>(storage.issuer, blankIssuer);
+      let loadedIssuerUpdatedAt = read<string>(storage.issuerUpdatedAt, "");
       let loadedClients = read<Client[]>(storage.clients, []);
       let loadedActivities = normalizeActivities(read<ActivityPreset[]>(storage.activities, defaultActivities));
       let loadedInvoices = read<Invoice[]>(storage.invoices, []);
       let loadedConcepts = read<SavedConcept[]>(storage.concepts, []);
+      let loadedDeletedClients = read<string[]>(storage.deletedClients, []);
+      let loadedDeletedInvoices = read<string[]>(storage.deletedInvoices, []);
+      let loadedDeletedActivities = read<string[]>(storage.deletedActivities, []);
+      let loadedDeletedConcepts = read<string[]>(storage.deletedConcepts, []);
+
+      const localHadData =
+        Boolean(loadedIssuer.fiscalName || loadedIssuer.taxId) ||
+        loadedClients.length > 0 ||
+        loadedInvoices.length > 0 ||
+        loadedConcepts.length > 0 ||
+        loadedDeletedClients.length > 0 ||
+        loadedDeletedInvoices.length > 0 ||
+        loadedDeletedActivities.length > 0 ||
+        loadedDeletedConcepts.length > 0;
 
       try {
         const response = await fetch("/api/data", { cache: "no-store" });
         const result = await response.json();
-        if (response.ok && result.configured) {
+
+        if (response.status === 401) {
+          setSyncStatus("sesion");
+        } else if (response.ok && result.configured) {
           setRemoteConfigured(true);
+          setSyncStatus("sincronizado");
+          setLastSyncedAt(result.updatedAt || nowISO());
 
           const remote = result.data || {};
-          const mergedIssuer = mergeIssuer(remote.issuer, loadedIssuer);
-          const mergedClients = mergeById<Client>(remote.clients || [], loadedClients);
-          const mergedActivities = normalizeActivities(mergeById<ActivityPreset>(remote.activities || [], loadedActivities));
-          const mergedInvoices = mergeById<Invoice>(remote.invoices || [], loadedInvoices);
-          const mergedConcepts = mergeById<SavedConcept>(remote.concepts || [], loadedConcepts);
+          loadedDeletedClients = mergeIds(remote.deletedClientIds || [], loadedDeletedClients);
+          loadedDeletedInvoices = mergeIds(remote.deletedInvoiceIds || [], loadedDeletedInvoices);
+          loadedDeletedActivities = mergeIds(remote.deletedActivityIds || [], loadedDeletedActivities);
+          loadedDeletedConcepts = mergeIds(remote.deletedConceptIds || [], loadedDeletedConcepts);
 
-          loadedIssuer = mergedIssuer;
-          loadedClients = mergedClients;
-          loadedActivities = mergedActivities;
-          loadedInvoices = mergedInvoices;
-          loadedConcepts = mergedConcepts;
+          const issuerMerge = mergeIssuerState(
+            remote.issuer,
+            remote.issuerUpdatedAt,
+            loadedIssuer,
+            loadedIssuerUpdatedAt
+          );
+          loadedIssuer = issuerMerge.issuer;
+          loadedIssuerUpdatedAt = issuerMerge.updatedAt;
 
-          const localHadData =
-            Boolean(loadedIssuer.fiscalName || loadedIssuer.taxId) ||
-            loadedClients.length > 0 ||
-            loadedInvoices.length > 0 ||
-            loadedConcepts.length > 0;
+          loadedClients = mergeById<Client>(remote.clients || [], loadedClients)
+            .filter((item) => !loadedDeletedClients.includes(item.id));
+          loadedActivities = normalizeActivities(
+            mergeById<ActivityPreset>(remote.activities || [], loadedActivities)
+              .filter((item) => !loadedDeletedActivities.includes(item.id))
+          );
+          loadedInvoices = mergeById<Invoice>(remote.invoices || [], loadedInvoices)
+            .filter((item) => !loadedDeletedInvoices.includes(item.id));
+          loadedConcepts = mergeById<SavedConcept>(remote.concepts || [], loadedConcepts)
+            .filter((item) => !loadedDeletedConcepts.includes(item.id));
 
-          if (localHadData) {
-            await fetch("/api/data", {
+          let snapshotsAdded = false;
+          loadedInvoices = loadedInvoices.map((invoice) => {
+            if (invoice.status === "Borrador" || (invoice.issuerSnapshot && invoice.clientSnapshot)) {
+              return invoice;
+            }
+
+            const client = loadedClients.find((item) => item.id === invoice.clientId);
+            if (!client) return invoice;
+
+            snapshotsAdded = true;
+            return {
+              ...invoice,
+              issuerSnapshot: invoice.issuerSnapshot || { ...loadedIssuer },
+              clientSnapshot: invoice.clientSnapshot || { ...client },
+              updatedAt: nowISO()
+            };
+          });
+
+          if (localHadData || snapshotsAdded) {
+            const syncResponse = await fetch("/api/data", {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 issuer: loadedIssuer,
+                issuerUpdatedAt: loadedIssuerUpdatedAt,
                 clients: loadedClients,
                 activities: loadedActivities,
                 invoices: loadedInvoices,
-                concepts: loadedConcepts
+                concepts: loadedConcepts,
+                deletedClientIds: loadedDeletedClients,
+                deletedInvoiceIds: loadedDeletedInvoices,
+                deletedActivityIds: loadedDeletedActivities,
+                deletedConceptIds: loadedDeletedConcepts
               })
             });
+            const synced = await syncResponse.json().catch(() => ({}));
+            if (syncResponse.ok && synced.data) {
+              loadedClients = synced.data.clients || loadedClients;
+              loadedActivities = normalizeActivities(synced.data.activities || loadedActivities);
+              loadedInvoices = synced.data.invoices || loadedInvoices;
+              loadedConcepts = synced.data.concepts || loadedConcepts;
+              loadedIssuer = { ...blankIssuer, ...(synced.data.issuer || loadedIssuer) };
+              loadedIssuerUpdatedAt = synced.data.issuerUpdatedAt || loadedIssuerUpdatedAt;
+              setLastSyncedAt(synced.updatedAt || nowISO());
+            }
           }
         }
       } catch {
-        // Si la base de datos no está disponible, la copia local sigue funcionando.
+        setSyncStatus("error");
       }
 
       setIssuer(loadedIssuer);
+      setIssuerUpdatedAt(loadedIssuerUpdatedAt);
       setClients(loadedClients);
       setActivities(loadedActivities.length ? loadedActivities : defaultActivities);
       setInvoices(loadedInvoices);
       setSavedConcepts(loadedConcepts);
+      setDeletedClientIds(loadedDeletedClients);
+      setDeletedInvoiceIds(loadedDeletedInvoices);
+      setDeletedActivityIds(loadedDeletedActivities);
+      setDeletedConceptIds(loadedDeletedConcepts);
       setDraft(emptyInvoice(loadedActivities[0] || defaultActivities[0]));
       setReady(true);
     }
 
-    load();
+    void load();
   }, []);
 
   useEffect(() => {
     if (!ready) return;
 
     localStorage.setItem(storage.issuer, JSON.stringify(issuer));
+    localStorage.setItem(storage.issuerUpdatedAt, JSON.stringify(issuerUpdatedAt));
     localStorage.setItem(storage.clients, JSON.stringify(clients));
     localStorage.setItem(storage.activities, JSON.stringify(activities));
     localStorage.setItem(storage.invoices, JSON.stringify(invoices));
     localStorage.setItem(storage.concepts, JSON.stringify(savedConcepts));
+    localStorage.setItem(storage.deletedClients, JSON.stringify(deletedClientIds));
+    localStorage.setItem(storage.deletedInvoices, JSON.stringify(deletedInvoiceIds));
+    localStorage.setItem(storage.deletedActivities, JSON.stringify(deletedActivityIds));
+    localStorage.setItem(storage.deletedConcepts, JSON.stringify(deletedConceptIds));
+
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      return;
+    }
 
     const timer = window.setTimeout(async () => {
       try {
+        setSyncStatus("sincronizando");
         const response = await fetch("/api/data", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ issuer, clients, activities, invoices, concepts: savedConcepts })
+          body: JSON.stringify(mainPayload())
         });
-        const result = await response.json();
-        if (response.ok && result.configured) setRemoteConfigured(true);
+        const result = await response.json().catch(() => ({}));
+
+        if (response.status === 401) {
+          setSyncStatus("sesion");
+          return;
+        }
+
+        if (!response.ok) {
+          setSyncStatus("error");
+          if (result?.error) flash(result.error);
+          return;
+        }
+
+        if (!result.configured) {
+          setSyncStatus("local");
+          return;
+        }
+
+        setRemoteConfigured(true);
+        setSyncStatus("sincronizado");
+        setLastSyncedAt(result.updatedAt || nowISO());
+        if (result.data) applyRemoteState(result.data);
       } catch {
-        // El guardado local sigue siendo la copia de respaldo del navegador.
+        setSyncStatus("error");
       }
-    }, 500);
+    }, 650);
 
     return () => window.clearTimeout(timer);
-  }, [issuer, clients, activities, invoices, savedConcepts, ready]);
+  }, [
+    issuer,
+    issuerUpdatedAt,
+    clients,
+    activities,
+    invoices,
+    savedConcepts,
+    deletedClientIds,
+    deletedInvoiceIds,
+    deletedActivityIds,
+    deletedConceptIds,
+    ready
+  ]);
 
   useEffect(() => {
     if (!ready || !remoteConfigured) return;
@@ -394,19 +650,25 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
       try {
         const response = await fetch("/api/data", { cache: "no-store" });
-        const result = await response.json();
-        if (!response.ok || !result.data || cancelled) return;
+        const result = await response.json().catch(() => ({}));
+        if (cancelled) return;
 
-        const remote = result.data;
-        if (remote.issuer) setIssuer((current) => ({ ...current, ...remote.issuer }));
-        if (remote.clients) setClients((current) => mergeById<Client>(current, remote.clients));
-        if (remote.activities) {
-          setActivities((current) => normalizeActivities(mergeById<ActivityPreset>(current, remote.activities)));
+        if (response.status === 401) {
+          setSyncStatus("sesion");
+          return;
         }
-        if (remote.invoices) setInvoices((current) => mergeById<Invoice>(current, remote.invoices));
-        if (remote.concepts) setSavedConcepts((current) => mergeById<SavedConcept>(current, remote.concepts));
+
+        if (!response.ok || !result.data) {
+          setSyncStatus("error");
+          return;
+        }
+
+        const changed = applyRemoteState(result.data);
+        setSyncStatus("sincronizado");
+        setLastSyncedAt(result.updatedAt || nowISO());
+        if (!changed) skipNextSyncRef.current = false;
       } catch {
-        // Mantiene la copia local si no hay conexión.
+        setSyncStatus("error");
       }
     }
 
@@ -419,7 +681,20 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);
     };
-  }, [ready, remoteConfigured]);
+  }, [
+    ready,
+    remoteConfigured,
+    issuer,
+    issuerUpdatedAt,
+    clients,
+    activities,
+    invoices,
+    savedConcepts,
+    deletedClientIds,
+    deletedInvoiceIds,
+    deletedActivityIds,
+    deletedConceptIds
+  ]);
 
   const draftTotals = useMemo(() => totals(draft), [draft]);
   const recentInvoices = useMemo(
