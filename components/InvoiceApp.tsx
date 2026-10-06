@@ -1152,8 +1152,12 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                     ))}
 
                     <div className="tax-explanation">
-                      <strong>Retención por línea</strong>
-                      <span>Puedes mezclar, por ejemplo, una línea al 15%, otra al 7% y otra al 0% dentro de la misma factura. Los conceptos usados se guardan automáticamente y aparecerán como sugerencia la próxima vez.</span>
+                      <strong>{(draft.invoiceMode || "normal") === "monthly" ? "Factura mensual" : "Retención por línea"}</strong>
+                      <span>
+                        {(draft.invoiceMode || "normal") === "monthly"
+                          ? "La fecha de cada concepto es opcional. Úsala si quieres dejar constancia exacta de cuándo se realizó cada servicio dentro del periodo facturado."
+                          : "Puedes mezclar, por ejemplo, una línea al 15%, otra al 7% y otra al 0% dentro de la misma factura. Los conceptos usados se guardan automáticamente y aparecerán como sugerencia la próxima vez."}
+                      </span>
                     </div>
                   </div>
 
