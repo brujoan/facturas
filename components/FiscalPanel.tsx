@@ -594,7 +594,9 @@ export default function FiscalPanel({ invoices }: Props) {
         const id = recurringExpenseId(recurring.id, monthKey);
         if (deletedSet.has(id) || existingIds.has(id)) continue;
 
-        const day = Math.max(1, Math.min(28, Number(recurring.dayOfMonth || 1)));
+        const [expenseYear, expenseMonth] = monthKey.split("-").map(Number);
+        const lastDay = new Date(expenseYear, expenseMonth, 0).getDate();
+        const day = Math.max(1, Math.min(lastDay, Number(recurring.dayOfMonth || 1)));
         additions.push({
           id,
           date: `${monthKey}-${String(day).padStart(2, "0")}`,
@@ -667,6 +669,11 @@ export default function FiscalPanel({ invoices }: Props) {
 
   const quarterCollectedInvoices = useMemo(
     () => quarterInvoices.filter((invoice) => invoice.status === "Cobrada"),
+    [quarterInvoices]
+  );
+
+  const quarterReceivableInvoices = useMemo(
+    () => quarterInvoices.filter((invoice) => invoice.status === "Emitida"),
     [quarterInvoices]
   );
 
@@ -795,11 +802,80 @@ export default function FiscalPanel({ invoices }: Props) {
 
   const vatForPocket = Math.max(0, quarterStats.vatResult);
 
-  const liquidAvailable = money(
-    quarterStats.collectedCash -
+  const receivableCash = useMemo(() => {
+    let total = 0;
+    for (const invoice of quarterReceivableInvoices) {
+      for (const line of invoice.lines) {
+        const base = lineBase(line);
+        total +=
+          base +
+          base * (Number(line.vat || 0) / 100) -
+          base * (Number(line.withholding || 0) / 100);
+      }
+    }
+    return money(total);
+  }, [quarterReceivableInvoices]);
+
+  const recurringQuarterStats = useMemo(() => {
+    const quarterMonths = monthKeysForQuarter(year, quarter);
+    const deletedExpenseSet = new Set(deletedExpenseIds);
+    const generatedIds = new Set(expenses.map((expense) => expense.id));
+
+    let plannedCash = 0;
+    let futureCash = 0;
+
+    for (const recurring of recurringExpenses) {
+      for (const monthKey of quarterMonths) {
+        if (!recurringApplies(recurring, monthKey)) continue;
+
+        const monthlyCash = money(
+          Number(recurring.monthlyAmount || 0) *
+          (1 + Number(recurring.vatRate || 0) / 100)
+        );
+        plannedCash = money(plannedCash + monthlyCash);
+
+        const generatedId = recurringExpenseId(recurring.id, monthKey);
+        if (!generatedIds.has(generatedId) && !deletedExpenseSet.has(generatedId)) {
+          futureCash = money(futureCash + monthlyCash);
+        }
+      }
+    }
+
+    const registeredCash = money(
+      quarterExpenses
+        .filter((expense) => Boolean(expense.recurringExpenseId))
+        .reduce(
+          (sum, expense) =>
+            sum + Number(expense.base || 0) * (1 + Number(expense.vatRate || 0) / 100),
+          0
+        )
+    );
+
+    return {
+      plannedCash,
+      registeredCash,
+      futureCash,
+      variableCash: money(quarterStats.expenseCash - registeredCash)
+    };
+  }, [
+    recurringExpenses,
+    deletedExpenseIds,
+    expenses,
+    quarterExpenses,
+    quarterStats.expenseCash,
+    year,
+    quarter
+  ]);
+
+  const taxReserve = money(vatForPocket + model130ForPocket);
+  const cashBeforeTax = money(quarterStats.collectedCash - quarterStats.expenseCash);
+  const liquidAvailable = money(cashBeforeTax - taxReserve);
+  const liquidForecast = money(
+    quarterStats.collectedCash +
+    receivableCash -
     quarterStats.expenseCash -
-    vatForPocket -
-    model130ForPocket
+    recurringQuarterStats.futureCash -
+    taxReserve
   );
 
   const missingReceipts = quarterExpenses.filter((expense) => !expense.hasReceipt).length;
