@@ -1182,6 +1182,18 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     );
   }
 
+  function deleteActivity(id: string) {
+    if (defaultActivities.some((activity) => activity.id === id)) return;
+    setActivities((current) => current.filter((activity) => activity.id !== id));
+    setDeletedActivityIds((current) => current.includes(id) ? current : [...current, id]);
+    flash("Actividad eliminada.");
+  }
+
+  function updateIssuer(patch: Partial<Issuer>) {
+    setIssuer((current) => ({ ...current, ...patch }));
+    setIssuerUpdatedAt(nowISO());
+  }
+
   function updateSavedConcept(id: string, patch: Partial<SavedConcept>) {
     setSavedConcepts((current) =>
       current.map((concept) => concept.id === id ? { ...concept, ...patch, updatedAt: nowISO() } : concept)
@@ -1197,8 +1209,17 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     return <main className="loading">Cargando gestor…</main>;
   }
 
-  const printClient = preview ? clients.find((client) => client.id === preview.clientId) : undefined;
+  const printClient = preview
+    ? preview.clientSnapshot || clients.find((client) => client.id === preview.clientId)
+    : undefined;
+  const printIssuer = preview?.issuerSnapshot || issuer;
   const printTotals = preview ? totals(preview) : null;
+  const syncLabel =
+    syncStatus === "sincronizado" ? "Sincronizado" :
+    syncStatus === "sincronizando" ? "Guardando…" :
+    syncStatus === "sesion" ? "Sesión caducada" :
+    syncStatus === "error" ? "Error de sincronización" :
+    "Solo en este dispositivo";
 
   return (
     <>
@@ -1240,6 +1261,12 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
             <div className="version-badge">
               <strong>v{version}</strong>
               <span>deploy {deployment}</span>
+            </div>
+            <div className={`sync-badge ${syncStatus}`}>
+              <span>{syncLabel}</span>
+              {lastSyncedAt && syncStatus === "sincronizado" && (
+                <small>{new Date(lastSyncedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</small>
+              )}
             </div>
             <button className="logout" onClick={logout}>Cerrar sesión</button>
           </div>
@@ -1557,7 +1584,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                         <input value={draft.paymentMethod} onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })} />
                       </label>
                       <label>IBAN
-                        <input value={issuer.iban} onChange={(e) => setIssuer({ ...issuer, iban: e.target.value })} placeholder="Se toma de Configuración" />
+                        <input value={issuer.iban} onChange={(e) => updateIssuer({ iban: e.target.value })} placeholder="Se toma de Configuración" />
                       </label>
                       <label className="span-2">Notas
                         <textarea rows={4} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Condiciones, referencia del servicio, observaciones…" />
@@ -1668,15 +1695,15 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                 <div className="panel">
                   <h2>Tus datos fiscales</h2>
                   <div className="form-grid three">
-                    <label>Nombre / razón social<input value={issuer.fiscalName} onChange={(e) => setIssuer({ ...issuer, fiscalName: e.target.value })} /></label>
-                    <label>NIF<input value={issuer.taxId} onChange={(e) => setIssuer({ ...issuer, taxId: e.target.value })} /></label>
-                    <label>Email<input value={issuer.email} onChange={(e) => setIssuer({ ...issuer, email: e.target.value })} /></label>
-                    <label className="span-2">Dirección fiscal<input value={issuer.address} onChange={(e) => setIssuer({ ...issuer, address: e.target.value })} /></label>
-                    <label>Teléfono<input value={issuer.phone} onChange={(e) => setIssuer({ ...issuer, phone: e.target.value })} /></label>
-                    <label>Código postal<input value={issuer.postalCode} onChange={(e) => setIssuer({ ...issuer, postalCode: e.target.value })} /></label>
-                    <label>Ciudad<input value={issuer.city} onChange={(e) => setIssuer({ ...issuer, city: e.target.value })} /></label>
-                    <label>Provincia<input value={issuer.province} onChange={(e) => setIssuer({ ...issuer, province: e.target.value })} /></label>
-                    <label className="span-2">IBAN<input value={issuer.iban} onChange={(e) => setIssuer({ ...issuer, iban: e.target.value })} /></label>
+                    <label>Nombre / razón social<input value={issuer.fiscalName} onChange={(e) => updateIssuer({ fiscalName: e.target.value })} /></label>
+                    <label>NIF<input value={issuer.taxId} onChange={(e) => updateIssuer({ taxId: e.target.value })} /></label>
+                    <label>Email<input value={issuer.email} onChange={(e) => updateIssuer({ email: e.target.value })} /></label>
+                    <label className="span-2">Dirección fiscal<input value={issuer.address} onChange={(e) => updateIssuer({ address: e.target.value })} /></label>
+                    <label>Teléfono<input value={issuer.phone} onChange={(e) => updateIssuer({ phone: e.target.value })} /></label>
+                    <label>Código postal<input value={issuer.postalCode} onChange={(e) => updateIssuer({ postalCode: e.target.value })} /></label>
+                    <label>Ciudad<input value={issuer.city} onChange={(e) => updateIssuer({ city: e.target.value })} /></label>
+                    <label>Provincia<input value={issuer.province} onChange={(e) => updateIssuer({ province: e.target.value })} /></label>
+                    <label className="span-2">IBAN<input value={issuer.iban} onChange={(e) => updateIssuer({ iban: e.target.value })} /></label>
                   </div>
                   <p className="saved-note">
                     {remoteConfigured
@@ -1731,7 +1758,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                           ) : (
                             <button
                               className="danger-link"
-                              onClick={() => setActivities((current) => current.filter((item) => item.id !== activity.id))}
+                              onClick={() => deleteActivity(activity.id)}
                             >
                               Eliminar
                             </button>
@@ -1864,11 +1891,11 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                 )}
               </div>
               <div className="issuer-print">
-                <strong>{issuer.fiscalName}</strong>
-                <span>{issuer.taxId}</span>
-                <span>{issuer.address}</span>
-                <span>{issuer.postalCode} {issuer.city} {issuer.province}</span>
-                <span>{issuer.email}</span>
+                <strong>{printIssuer.fiscalName}</strong>
+                <span>{printIssuer.taxId}</span>
+                <span>{printIssuer.address}</span>
+                <span>{printIssuer.postalCode} {printIssuer.city} {printIssuer.province}</span>
+                <span>{printIssuer.email}</span>
               </div>
             </header>
 
@@ -1906,7 +1933,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               <div className="payment-print">
                 <strong>Pago</strong>
                 <p>{preview.paymentMethod}</p>
-                {issuer.iban && <p>IBAN: {issuer.iban}</p>}
+                {printIssuer.iban && <p>IBAN: {printIssuer.iban}</p>}
                 {preview.dueDate && <p>Vencimiento: {preview.dueDate}</p>}
                 {preview.notes && <><strong>Observaciones</strong><p>{preview.notes}</p></>}
               </div>
