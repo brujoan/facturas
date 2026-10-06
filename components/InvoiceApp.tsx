@@ -1692,7 +1692,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                                 <button
                                   onClick={() => printInvoice(invoice)}
                                   disabled={invoiceCountsAsIssued(invoice) && !invoice.number}
-                                  title={invoiceCountsAsIssued(invoice) && !invoice.number ? "Esperando numeración segura" : "Imprimir / guardar PDF"}
+                                  title={invoiceCountsAsIssued(invoice) && !invoice.number ? "Esperando numeración segura" : "Descargar PDF"}
                                 >
                                   {invoiceCountsAsIssued(invoice) && !invoice.number ? "Numerando…" : "PDF"}
                                 </button>
