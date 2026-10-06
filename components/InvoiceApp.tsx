@@ -26,6 +26,8 @@ type Client = {
   city: string;
   province: string;
   email: string;
+  phone?: string;
+  notes?: string;
 };
 
 type ActivityPreset = {
@@ -77,6 +79,19 @@ const blankIssuer: Issuer = {
   email: "",
   phone: "",
   iban: ""
+};
+
+const blankClient: Client = {
+  id: "",
+  name: "",
+  taxId: "",
+  address: "",
+  postalCode: "",
+  city: "",
+  province: "",
+  email: "",
+  phone: "",
+  notes: ""
 };
 
 const defaultActivities: ActivityPreset[] = [
@@ -183,16 +198,7 @@ export default function InvoiceApp() {
   const [draft, setDraft] = useState<Invoice>(() => emptyInvoice(defaultActivities[0]));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Invoice | null>(null);
-  const [clientDraft, setClientDraft] = useState<Client>({
-    id: "",
-    name: "",
-    taxId: "",
-    address: "",
-    postalCode: "",
-    city: "",
-    province: "",
-    email: ""
-  });
+  const [clientDraft, setClientDraft] = useState<Client>({ ...blankClient });
   const [activityDraft, setActivityDraft] = useState({ name: "", vat: 21, withholding: 0 });
   const [notice, setNotice] = useState("");
   const [remoteConfigured, setRemoteConfigured] = useState(false);
@@ -364,23 +370,40 @@ export default function InvoiceApp() {
     window.setTimeout(() => window.print(), 100);
   }
 
-  function addClient() {
+  function saveClient() {
     if (!clientDraft.name.trim() || !clientDraft.taxId.trim()) {
       return flash("Nombre/razón social y NIF/CIF son obligatorios.");
     }
-    const client = { ...clientDraft, id: uid() };
-    setClients((current) => [...current, client]);
-    setClientDraft({
-      id: "",
-      name: "",
-      taxId: "",
-      address: "",
-      postalCode: "",
-      city: "",
-      province: "",
-      email: ""
-    });
-    flash("Cliente guardado.");
+
+    const editing = Boolean(clientDraft.id);
+    const client: Client = {
+      ...clientDraft,
+      id: clientDraft.id || uid(),
+      name: clientDraft.name.trim(),
+      taxId: clientDraft.taxId.trim(),
+      phone: (clientDraft.phone || "").trim(),
+      notes: clientDraft.notes || ""
+    };
+
+    setClients((current) => editing
+      ? current.map((item) => item.id === client.id ? client : item)
+      : [...current, client]);
+    setClientDraft({ ...blankClient });
+    flash(editing ? "Cliente actualizado." : "Cliente guardado.");
+  }
+
+  function editClient(client: Client) {
+    setClientDraft({ ...blankClient, ...client });
+  }
+
+  function deleteClient(client: Client) {
+    if (invoices.some((invoice) => invoice.clientId === client.id)) {
+      return flash("No puedes eliminar un cliente con facturas vinculadas. Puedes editarlo.");
+    }
+    if (!window.confirm(`¿Eliminar a ${client.name}? Esta acción no se puede deshacer.`)) return;
+    setClients((current) => current.filter((item) => item.id !== client.id));
+    if (clientDraft.id === client.id) setClientDraft({ ...blankClient });
+    flash("Cliente eliminado.");
   }
 
   function addActivity() {
@@ -665,7 +688,7 @@ export default function InvoiceApp() {
 
               <div className="split-layout">
                 <div className="panel">
-                  <h2>Nuevo cliente</h2>
+                  <h2>{clientDraft.id ? "Editar cliente" : "Nuevo cliente"}</h2>
                   <div className="form-grid two">
                     <label>Nombre / razón social<input value={clientDraft.name} onChange={(e) => setClientDraft({ ...clientDraft, name: e.target.value })} /></label>
                     <label>NIF / CIF<input value={clientDraft.taxId} onChange={(e) => setClientDraft({ ...clientDraft, taxId: e.target.value })} /></label>
@@ -674,8 +697,23 @@ export default function InvoiceApp() {
                     <label>Ciudad<input value={clientDraft.city} onChange={(e) => setClientDraft({ ...clientDraft, city: e.target.value })} /></label>
                     <label>Provincia<input value={clientDraft.province} onChange={(e) => setClientDraft({ ...clientDraft, province: e.target.value })} /></label>
                     <label>Email<input type="email" value={clientDraft.email} onChange={(e) => setClientDraft({ ...clientDraft, email: e.target.value })} /></label>
+                    <label>Teléfono<input type="tel" autoComplete="tel" placeholder="+34 600 000 000" value={clientDraft.phone || ""} onChange={(e) => setClientDraft({ ...clientDraft, phone: e.target.value })} /></label>
+                    <label className="span-2">Notas internas del contacto
+                      <textarea
+                        rows={5}
+                        placeholder="Persona de contacto, horarios, acuerdos, recordatorios…"
+                        value={clientDraft.notes || ""}
+                        onChange={(e) => setClientDraft({ ...clientDraft, notes: e.target.value })}
+                      />
+                      <span className="field-hint">Estas notas son privadas y no aparecen en las facturas.</span>
+                    </label>
                   </div>
-                  <button className="button primary" onClick={addClient}>Guardar cliente</button>
+                  <div className="client-form-actions">
+                    <button className="button primary" onClick={saveClient}>{clientDraft.id ? "Guardar cambios" : "Guardar cliente"}</button>
+                    {clientDraft.id && (
+                      <button className="button secondary" onClick={() => setClientDraft({ ...blankClient })}>Cancelar edición</button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="panel">
@@ -687,9 +725,15 @@ export default function InvoiceApp() {
                         <div>
                           <strong>{client.name}</strong>
                           <span>{client.taxId}</span>
+                          {client.phone && <span><strong className="contact-label">Tel.</strong> {client.phone}</span>}
+                          {client.email && <small>{client.email}</small>}
                           <small>{[client.address, client.postalCode, client.city].filter(Boolean).join(", ")}</small>
+                          {client.notes && <p className="client-notes">{client.notes}</p>}
                         </div>
-                        <button className="danger-link" onClick={() => setClients((current) => current.filter((item) => item.id !== client.id))}>Eliminar</button>
+                        <div className="client-actions">
+                          <button className="button small secondary" onClick={() => editClient(client)}>Editar</button>
+                          <button className="danger-link" onClick={() => deleteClient(client)}>Eliminar</button>
+                        </div>
                       </article>
                     ))}
                   </div>
