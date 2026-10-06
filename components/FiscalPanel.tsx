@@ -447,6 +447,11 @@ export default function FiscalPanel({ invoices }: Props) {
     [expenses, year, quarter]
   );
 
+  const quarterCollectedInvoices = useMemo(
+    () => quarterInvoices.filter((invoice) => invoice.status === "Cobrada"),
+    [quarterInvoices]
+  );
+
   const quarterStats = useMemo(() => {
     let incomeBase = 0;
     let vatOutput = 0;
@@ -465,23 +470,40 @@ export default function FiscalPanel({ invoices }: Props) {
 
     let expenseBase = 0;
     let vatInput = 0;
+    let expenseCash = 0;
     for (const expense of quarterExpenses) {
-      expenseBase += Number(expense.base || 0) * (Number(expense.irpfDeductiblePct || 0) / 100);
+      const base = Number(expense.base || 0);
+      const vatRate = Number(expense.vatRate || 0);
+      expenseBase += base * (Number(expense.irpfDeductiblePct || 0) / 100);
       vatInput +=
-        Number(expense.base || 0) *
-        (Number(expense.vatRate || 0) / 100) *
+        base *
+        (vatRate / 100) *
         (Number(expense.vatDeductiblePct || 0) / 100);
+      expenseCash += base + base * (vatRate / 100);
+    }
+
+    let collectedCash = 0;
+    for (const invoice of quarterCollectedInvoices) {
+      for (const line of invoice.lines) {
+        const base = lineBase(line);
+        collectedCash +=
+          base +
+          base * (Number(line.vat || 0) / 100) -
+          base * (Number(line.withholding || 0) / 100);
+      }
     }
 
     return {
-      incomeBase,
-      vatOutput,
-      withholding,
-      withheldBase,
-      expenseBase,
-      vatInput,
-      net: incomeBase - expenseBase,
-      vatResult: vatOutput - vatInput
+      incomeBase: money(incomeBase),
+      vatOutput: money(vatOutput),
+      withholding: money(withholding),
+      withheldBase: money(withheldBase),
+      expenseBase: money(expenseBase),
+      vatInput: money(vatInput),
+      expenseCash: money(expenseCash),
+      collectedCash: money(collectedCash),
+      net: money(incomeBase - expenseBase),
+      vatResult: money(vatOutput - vatInput)
     };
   }, [quarterInvoices, quarterExpenses]);
 
@@ -542,6 +564,25 @@ export default function FiscalPanel({ invoices }: Props) {
   const retentionRatio = quarterStats.incomeBase
     ? quarterStats.withheldBase / quarterStats.incomeBase
     : 0;
+
+  const model130ForPocket =
+    activeRecord.model130 === "No aplica"
+      ? 0
+      : (
+          ["Presentado", "Pagado"].includes(activeRecord.model130) &&
+          Number(activeRecord.model130Paid || 0) > 0
+        )
+        ? Number(activeRecord.model130Paid || 0)
+        : cumulativeStats.estimate;
+
+  const vatForPocket = Math.max(0, quarterStats.vatResult);
+
+  const liquidAvailable = money(
+    quarterStats.collectedCash -
+    quarterStats.expenseCash -
+    vatForPocket -
+    model130ForPocket
+  );
 
   const missingReceipts = quarterExpenses.filter((expense) => !expense.hasReceipt).length;
 
@@ -702,12 +743,57 @@ export default function FiscalPanel({ invoices }: Props) {
       </div>
 
       <div className="fiscal-kpis">
-        <article><span>Ingresos · base</span><strong>{currency(quarterStats.incomeBase)}</strong><small>{quarterInvoices.length} facturas</small></article>
-        <article><span>IVA repercutido</span><strong>{currency(quarterStats.vatOutput)}</strong><small>Facturas emitidas</small></article>
-        <article><span>IVA deducible</span><strong>{currency(quarterStats.vatInput)}</strong><small>{quarterExpenses.length} gastos</small></article>
-        <article><span>303 estimado</span><strong>{currency(quarterStats.vatResult)}</strong><small>{quarterStats.vatResult < 0 ? "A compensar aprox." : "A ingresar aprox."}</small></article>
-        <article><span>IRPF retenido</span><strong>{currency(quarterStats.withholding)}</strong><small>{percent(retentionRatio)} de base con retención</small></article>
-        <article><span>Rendimiento aprox.</span><strong>{currency(quarterStats.net)}</strong><small>Ingresos − gasto deducible</small></article>
+        <article>
+          <span>Facturado · base</span>
+          <strong>{currency(quarterStats.incomeBase)}</strong>
+          <small>{quarterInvoices.length} facturas emitidas/cobradas</small>
+        </article>
+        <article className="cash-kpi">
+          <span>Cobrado en cuenta</span>
+          <strong>{currency(quarterStats.collectedCash)}</strong>
+          <small>{quarterCollectedInvoices.length} facturas marcadas Cobrada</small>
+        </article>
+        <article>
+          <span>IVA repercutido</span>
+          <strong>{currency(quarterStats.vatOutput)}</strong>
+          <small>Facturas emitidas</small>
+        </article>
+        <article>
+          <span>IVA deducible</span>
+          <strong>{currency(quarterStats.vatInput)}</strong>
+          <small>{quarterExpenses.length} gastos</small>
+        </article>
+        <article>
+          <span>303 estimado</span>
+          <strong>{currency(quarterStats.vatResult)}</strong>
+          <small>{quarterStats.vatResult < 0 ? "A compensar aprox." : "A ingresar aprox."}</small>
+        </article>
+        <article>
+          <span>IRPF retenido</span>
+          <strong>{currency(quarterStats.withholding)}</strong>
+          <small>{percent(retentionRatio)} de base con retención</small>
+        </article>
+        <article>
+          <span>Rendimiento fiscal aprox.</span>
+          <strong>{currency(quarterStats.net)}</strong>
+          <small>Base facturada − gasto deducible</small>
+        </article>
+        <article className="liquid-kpi">
+          <span>Líquido disponible estimado</span>
+          <strong>{currency(liquidAvailable)}</strong>
+          <small>Cobrado − gastos − 303 − 130</small>
+        </article>
+      </div>
+
+      <div className="fiscal-money-guide">
+        <strong>Qué significa cada cifra</strong>
+        <div>
+          <span><b>Facturado</b> es la base de las facturas emitidas/cobradas del trimestre.</span>
+          <span><b>Cobrado</b> es el total neto de las facturas del trimestre que has marcado como Cobrada (base + IVA − IRPF).</span>
+          <span><b>Rendimiento</b> es el beneficio fiscal aproximado: base facturada − gastos deducibles.</span>
+          <span><b>Líquido disponible</b> estima lo que podrías considerar “para ti”: cobrado − gasto total registrado − IVA a ingresar − 130 estimado.</span>
+        </div>
+        <small>El líquido es orientativo: asume que los gastos registrados están pagados y que “Cobrada” refleja dinero ya recibido. No sustituye al saldo real del banco.</small>
       </div>
 
       <div className="tax-model-grid">
