@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import FiscalPanel from "@/components/FiscalPanel";
 
 type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
+type BillingPeriod = "month" | "year" | "total";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
 
 type Issuer = {
@@ -107,10 +108,34 @@ const blankClient: Client = {
 };
 
 const defaultActivities: ActivityPreset[] = [
-  { id: "prof-15", name: "Actividad profesional · 15% IRPF", vat: 21, withholding: 15 },
-  { id: "prof-7", name: "Actividad profesional · 7% IRPF", vat: 21, withholding: 7 },
-  { id: "sin-ret", name: "Actividad sin retención", vat: 21, withholding: 0 }
+  {
+    id: "cnae-5916",
+    name: "CNAE 5916 Actividades de producción de programas de televisión",
+    vat: 21,
+    withholding: 0
+  },
+  {
+    id: "cnae-5912",
+    name: "CNAE 5912 Actividades de posproducción cinematográfica, de vídeo y de programas de televisión",
+    vat: 21,
+    withholding: 0
+  }
 ];
+
+const legacyActivityIds = new Set(["prof-15", "prof-7", "sin-ret"]);
+
+function normalizeActivities(items: ActivityPreset[]) {
+  const custom = items.filter(
+    (activity) =>
+      !legacyActivityIds.has(activity.id) &&
+      !defaultActivities.some(
+        (preset) =>
+          preset.id === activity.id ||
+          preset.name.toLocaleLowerCase("es") === activity.name.toLocaleLowerCase("es")
+      )
+  );
+  return [...defaultActivities, ...custom];
+}
 
 function uid() {
   return crypto.randomUUID();
@@ -207,6 +232,7 @@ type InvoiceAppProps = {
 
 export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [tab, setTab] = useState<Tab>("facturas");
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("month");
   const [ready, setReady] = useState(false);
   const [issuer, setIssuer] = useState<Issuer>(blankIssuer);
   const [clients, setClients] = useState<Client[]>([]);
@@ -234,7 +260,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     async function load() {
       let loadedIssuer = read<Issuer>(storage.issuer, blankIssuer);
       let loadedClients = read<Client[]>(storage.clients, []);
-      let loadedActivities = read<ActivityPreset[]>(storage.activities, defaultActivities);
+      let loadedActivities = normalizeActivities(read<ActivityPreset[]>(storage.activities, defaultActivities));
       let loadedInvoices = read<Invoice[]>(storage.invoices, []);
       let loadedConcepts = read<SavedConcept[]>(storage.concepts, []);
 
@@ -246,7 +272,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
           if (result.data) {
             loadedIssuer = result.data.issuer || blankIssuer;
             loadedClients = result.data.clients || [];
-            loadedActivities = result.data.activities?.length ? result.data.activities : defaultActivities;
+            loadedActivities = normalizeActivities(result.data.activities?.length ? result.data.activities : defaultActivities);
             loadedInvoices = result.data.invoices || [];
             loadedConcepts = result.data.concepts || loadedConcepts;
           }
@@ -298,6 +324,29 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     () => [...invoices].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [invoices]
   );
+
+  const billedAmount = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    return invoices
+      .filter((invoice) => {
+        if (invoice.status === "Anulada") return false;
+        if (billingPeriod === "total") return true;
+
+        const year = Number(invoice.issueDate.slice(0, 4));
+        if (year !== currentYear) return false;
+        if (billingPeriod === "year") return true;
+
+        const month = Number(invoice.issueDate.slice(5, 7));
+        return month === currentMonth;
+      })
+      .reduce((sum, invoice) => {
+        const t = totals(invoice);
+        return sum + t.base + t.vat - t.withholding;
+      }, 0);
+  }, [invoices, billingPeriod]);
 
   function flash(message: string) {
     setNotice(message);
@@ -563,11 +612,21 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               </header>
 
               <div className="stats-grid">
-                <article className="stat-card">
-                  <span>Facturado</span>
-                  <strong>{currency(invoices.filter(i => i.status !== "Anulada").reduce((sum, item) => {
-                    const t = totals(item); return sum + t.base + t.vat - t.withholding;
-                  }, 0))}</strong>
+                <article className="stat-card billed-card">
+                  <div className="stat-card-head">
+                    <span>Facturado</span>
+                    <select
+                      className="stat-period-select"
+                      value={billingPeriod}
+                      onChange={(e) => setBillingPeriod(e.target.value as BillingPeriod)}
+                      aria-label="Periodo de facturación"
+                    >
+                      <option value="month">Este mes</option>
+                      <option value="year">Este año</option>
+                      <option value="total">Total</option>
+                    </select>
+                  </div>
+                  <strong>{currency(billedAmount)}</strong>
                 </article>
                 <article className="stat-card">
                   <span>Facturas</span>
