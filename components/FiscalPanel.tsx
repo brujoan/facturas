@@ -1082,26 +1082,73 @@ export default function FiscalPanel({ invoices }: Props) {
         })}
       </div>
 
-      <div className="fiscal-kpis">
+      <div className="fiscal-block-heading">
+        <div>
+          <p className="eyebrow">Caja</p>
+          <h2>Qué dinero tienes y qué queda pendiente</h2>
+        </div>
+      </div>
+
+      <div className="fiscal-kpis cash-overview">
+        <article className="cash-kpi">
+          <span>Cobrado</span>
+          <strong>{currency(quarterStats.collectedCash)}</strong>
+          <small>{quarterCollectedInvoices.length} facturas cobradas</small>
+        </article>
+        <article>
+          <span>Por cobrar</span>
+          <strong>{currency(receivableCash)}</strong>
+          <small>{quarterReceivableInvoices.length} facturas emitidas</small>
+        </article>
+        <article>
+          <span>Gastos registrados</span>
+          <strong>{currency(quarterStats.expenseCash)}</strong>
+          <small>Importe pagado/registrado con IVA</small>
+        </article>
+        <article>
+          <span>Reserva fiscal</span>
+          <strong>{currency(taxReserve)}</strong>
+          <small>303 + 130 orientativos</small>
+        </article>
+        <article className={`liquid-kpi ${liquidAvailable < 0 ? "negative" : ""}`}>
+          <span>Líquido hoy</span>
+          <strong>{currency(liquidAvailable)}</strong>
+          <small>Cobrado − gastos − reserva fiscal</small>
+        </article>
+        <article className="forecast-kpi">
+          <span>Líquido al cobrar todo</span>
+          <strong>{currency(liquidForecast)}</strong>
+          <small>Incluye pendiente de cobro y recurrentes previstos</small>
+        </article>
+      </div>
+
+      <div className="cash-explanation">
+        <span><b>Líquido hoy</b> puede ser negativo si todavía tienes facturas sin cobrar pero ya estás reservando los impuestos del trimestre.</span>
+        <span><b>Líquido al cobrar todo</b> es la previsión si cobras las facturas emitidas y pagas los gastos recurrentes pendientes de este trimestre.</span>
+      </div>
+
+      <div className="fiscal-block-heading">
+        <div>
+          <p className="eyebrow">Fiscalidad</p>
+          <h2>Impuestos y rendimiento</h2>
+        </div>
+      </div>
+
+      <div className="fiscal-kpis tax-overview">
         <article>
           <span>Facturado · base</span>
           <strong>{currency(quarterStats.incomeBase)}</strong>
           <small>{quarterInvoices.length} facturas emitidas/cobradas</small>
         </article>
-        <article className="cash-kpi">
-          <span>Cobrado en cuenta</span>
-          <strong>{currency(quarterStats.collectedCash)}</strong>
-          <small>{quarterCollectedInvoices.length} facturas marcadas Cobrada</small>
-        </article>
         <article>
           <span>IVA repercutido</span>
           <strong>{currency(quarterStats.vatOutput)}</strong>
-          <small>Facturas emitidas</small>
+          <small>IVA cobrado a clientes</small>
         </article>
         <article>
           <span>IVA deducible</span>
           <strong>{currency(quarterStats.vatInput)}</strong>
-          <small>{quarterExpenses.length} gastos</small>
+          <small>{quarterExpenses.length} gastos registrados</small>
         </article>
         <article>
           <span>303 estimado</span>
@@ -1114,26 +1161,45 @@ export default function FiscalPanel({ invoices }: Props) {
           <small>{percent(retentionRatio)} de base con retención</small>
         </article>
         <article>
+          <span>130 estimado</span>
+          <strong>{currency(model130ForPocket)}</strong>
+          <small>Pago fraccionado orientativo</small>
+        </article>
+        <article className="performance-kpi">
           <span>Rendimiento fiscal aprox.</span>
           <strong>{currency(quarterStats.net)}</strong>
           <small>Base facturada − gasto deducible</small>
         </article>
-        <article className="liquid-kpi">
-          <span>Líquido disponible estimado</span>
-          <strong>{currency(liquidAvailable)}</strong>
-          <small>Cobrado − gastos − 303 − 130</small>
-        </article>
       </div>
 
-      <div className="fiscal-money-guide">
-        <strong>Qué significa cada cifra</strong>
+      <div className="fiscal-block-heading">
         <div>
-          <span><b>Facturado</b> es la base de las facturas emitidas/cobradas del trimestre.</span>
-          <span><b>Cobrado</b> es el total neto de las facturas del trimestre que has marcado como Cobrada (base + IVA − IRPF).</span>
-          <span><b>Rendimiento</b> es el beneficio fiscal aproximado: base facturada − gastos deducibles.</span>
-          <span><b>Líquido disponible</b> estima lo que podrías considerar “para ti”: cobrado − gasto total registrado − IVA a ingresar − 130 estimado.</span>
+          <p className="eyebrow">Gastos</p>
+          <h2>Variables y recurrentes</h2>
         </div>
-        <small>El líquido es orientativo: asume que los gastos registrados están pagados y que “Cobrada” refleja dinero ya recibido. No sustituye al saldo real del banco.</small>
+      </div>
+
+      <div className="fiscal-kpis expense-overview">
+        <article>
+          <span>Gastos variables</span>
+          <strong>{currency(recurringQuarterStats.variableCash)}</strong>
+          <small>Registrados sin recurrentes</small>
+        </article>
+        <article className="recurring-kpi">
+          <span>Recurrentes contabilizados</span>
+          <strong>{currency(recurringQuarterStats.registeredCash)}</strong>
+          <small>Ya generados en este trimestre</small>
+        </article>
+        <article>
+          <span>Recurrentes pendientes</span>
+          <strong>{currency(recurringQuarterStats.futureCash)}</strong>
+          <small>Programados y todavía no generados</small>
+        </article>
+        <article>
+          <span>Gasto previsto total</span>
+          <strong>{currency(money(quarterStats.expenseCash + recurringQuarterStats.futureCash))}</strong>
+          <small>Registrado + recurrente pendiente</small>
+        </article>
       </div>
 
       <div className="tax-model-grid">
@@ -1190,6 +1256,96 @@ export default function FiscalPanel({ invoices }: Props) {
         </article>
       </div>
 
+      <div className="panel recurring-expenses-panel">
+        <div className="section-title">
+          <div>
+            <h2>Gastos recurrentes</h2>
+            <p className="muted">Configura cuotas o suscripciones mensuales. La app crea el gasto automáticamente al llegar el día de cargo y evita duplicados.</p>
+          </div>
+        </div>
+
+        <div className="recurring-expense-layout">
+          <div>
+            <div className="form-grid three recurring-form">
+              <label>Concepto
+                <input value={recurringDraft.concept} onChange={(e) => setRecurringDraft({ ...recurringDraft, concept: e.target.value })} />
+              </label>
+              <label>Proveedor
+                <input value={recurringDraft.supplier} onChange={(e) => setRecurringDraft({ ...recurringDraft, supplier: e.target.value })} />
+              </label>
+              <label>Importe mensual
+                <input type="number" min="0" step="0.01" value={recurringDraft.monthlyAmount} onChange={(e) => setRecurringDraft({ ...recurringDraft, monthlyAmount: Number(e.target.value) })} />
+              </label>
+              <label>Mes de inicio
+                <input type="month" value={recurringDraft.startMonth} onChange={(e) => setRecurringDraft({ ...recurringDraft, startMonth: e.target.value })} />
+              </label>
+              <label>Mes final · opcional
+                <input type="month" value={recurringDraft.endMonth} onChange={(e) => setRecurringDraft({ ...recurringDraft, endMonth: e.target.value })} />
+              </label>
+              <label>Día aprox. de cargo
+                <input type="number" min="1" max="31" value={recurringDraft.dayOfMonth} onChange={(e) => setRecurringDraft({ ...recurringDraft, dayOfMonth: Number(e.target.value) })} />
+              </label>
+              <label>IVA %
+                <input type="number" min="0" max="100" step="0.01" value={recurringDraft.vatRate} onChange={(e) => setRecurringDraft({ ...recurringDraft, vatRate: Number(e.target.value) })} />
+              </label>
+              <label>Deducible IRPF %
+                <input type="number" min="0" max="100" value={recurringDraft.irpfDeductiblePct} onChange={(e) => setRecurringDraft({ ...recurringDraft, irpfDeductiblePct: Number(e.target.value) })} />
+              </label>
+              <label>Deducible IVA %
+                <input type="number" min="0" max="100" value={recurringDraft.vatDeductiblePct} onChange={(e) => setRecurringDraft({ ...recurringDraft, vatDeductiblePct: Number(e.target.value) })} />
+              </label>
+              <label className="receipt-check recurring-active">
+                <input type="checkbox" checked={recurringDraft.active} onChange={(e) => setRecurringDraft({ ...recurringDraft, active: e.target.checked })} />
+                Activo
+              </label>
+            </div>
+
+            <div className="recurring-hint">
+              <strong>Cuota de autónomos</strong>
+              <span>Te la dejo preparada con 200 €/mes, IVA 0% y 100% deducible en IRPF. Ajusta el importe real antes de guardarla.</span>
+            </div>
+
+            <div className="client-form-actions">
+              <button className="button primary" onClick={saveRecurringExpense}>
+                {recurringDraft.id ? "Guardar recurrente" : "Añadir recurrente"}
+              </button>
+              {recurringDraft.id && (
+                <button className="button secondary" onClick={() => setRecurringDraft(blankRecurringExpense())}>Cancelar</button>
+              )}
+            </div>
+          </div>
+
+          <div className="recurring-list">
+            {recurringExpenses.length === 0 && <p className="muted">Todavía no hay gastos recurrentes configurados.</p>}
+            {recurringExpenses
+              .slice()
+              .sort((a, b) => a.concept.localeCompare(b.concept, "es"))
+              .map((item) => (
+                <article key={item.id}>
+                  <div className="recurring-main">
+                    <div>
+                      <strong>{item.concept}</strong>
+                      <span>{item.supplier}</span>
+                    </div>
+                    <strong>{currency(item.monthlyAmount)}/mes</strong>
+                  </div>
+                  <div className="expense-meta">
+                    <span>{item.startMonth} → {item.endMonth || "sin fin"}</span>
+                    <span>Día {item.dayOfMonth}</span>
+                    <span>IVA {item.vatRate}%</span>
+                    <span>IRPF ded. {item.irpfDeductiblePct}%</span>
+                    <span className={item.active ? "receipt-ok" : "receipt-missing"}>{item.active ? "Activo" : "Pausado"}</span>
+                  </div>
+                  <div className="expense-actions">
+                    <button className="button small secondary" onClick={() => editRecurringExpense(item)}>Editar</button>
+                    <button className="danger-link" onClick={() => deleteRecurringExpense(item)}>Eliminar</button>
+                  </div>
+                </article>
+              ))}
+          </div>
+        </div>
+      </div>
+
       <div className="split-layout fiscal-expense-layout">
         <div className="panel">
           <div className="section-title">
@@ -1239,7 +1395,7 @@ export default function FiscalPanel({ invoices }: Props) {
                 <article className="expense-card" key={expense.id}>
                   <div className="expense-main">
                     <div>
-                      <strong>{expense.concept}</strong>
+                      <strong>{expense.concept} {expense.recurringExpenseId && <span className="expense-badge">Recurrente</span>}</strong>
                       <span>{expense.supplier} · {expense.date}</span>
                     </div>
                     <strong>{currency(expense.base + vatAmount)}</strong>
