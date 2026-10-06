@@ -237,6 +237,49 @@ export default function FiscalPanel({ invoices }: Props) {
     return () => window.clearTimeout(timer);
   }, [expenses, records, ready]);
 
+  useEffect(() => {
+    if (!ready) return;
+
+    let cancelled = false;
+
+    async function refreshFiscal() {
+      if (document.visibilityState === "hidden") return;
+
+      try {
+        const response = await fetch("/api/fiscal", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !result.data || cancelled) return;
+
+        if (result.data.expenses) {
+          setExpenses((current) => mergeByKey<Expense>(
+            current,
+            result.data.expenses,
+            (item) => item.id
+          ));
+        }
+        if (result.data.taxRecords) {
+          setRecords((current) => mergeByKey<TaxRecord>(
+            current,
+            result.data.taxRecords,
+            (item) => item.key
+          ));
+        }
+      } catch {
+        // Conserva los datos locales si no hay conexión.
+      }
+    }
+
+    const onFocus = () => void refreshFiscal();
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(() => void refreshFiscal(), 30000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
+  }, [ready]);
+
   const availableYears = useMemo(() => {
     const values = new Set<number>([new Date().getFullYear()]);
     invoices.forEach((invoice) => {
