@@ -6,6 +6,7 @@ type InvoiceLine = {
   id: string;
   activityId: string;
   description: string;
+  serviceDate?: string;
   quantity: number;
   unitPrice: number;
   vat: number;
@@ -16,6 +17,10 @@ type Invoice = {
   id: string;
   number: string;
   issueDate: string;
+  operationDate?: string;
+  invoiceMode?: "normal" | "monthly";
+  periodFrom?: string;
+  periodTo?: string;
   status: "Borrador" | "Emitida" | "Cobrada" | "Anulada";
   lines: InvoiceLine[];
 };
@@ -32,6 +37,7 @@ type Expense = {
   vatDeductiblePct: number;
   hasReceipt: boolean;
   notes: string;
+  updatedAt?: string;
 };
 
 type TaxStatus = "Pendiente" | "Presentado" | "Pagado" | "No aplica";
@@ -44,6 +50,7 @@ type TaxRecord = {
   model130: TaxStatus;
   model130Paid: number;
   notes: string;
+  updatedAt?: string;
 };
 
 type Props = {
@@ -59,8 +66,17 @@ function uid() {
   return crypto.randomUUID();
 }
 
+function nowISO() {
+  return new Date().toISOString();
+}
+
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("-");
 }
 
 function currentQuarter() {
@@ -91,8 +107,23 @@ function percent(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+function money(value: number) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
 function lineBase(line: InvoiceLine) {
-  return Number(line.quantity || 0) * Number(line.unitPrice || 0);
+  return money(Number(line.quantity || 0) * Number(line.unitPrice || 0));
+}
+
+function invoiceCountsAsIssued(invoice: Invoice) {
+  return invoice.status === "Emitida" || invoice.status === "Cobrada";
+}
+
+function invoiceTaxDate(invoice: Invoice) {
+  if ((invoice.invoiceMode || "normal") === "monthly") {
+    return invoice.periodTo || invoice.operationDate || invoice.issueDate;
+  }
+  return invoice.operationDate || invoice.issueDate;
 }
 
 function deadlineISO(year: number, quarter: number) {
@@ -135,7 +166,8 @@ function emptyRecord(year: number, quarter: number): TaxRecord {
     model303: "Pendiente",
     model130: "Pendiente",
     model130Paid: 0,
-    notes: ""
+    notes: "",
+    updatedAt: ""
   };
 }
 
@@ -143,13 +175,36 @@ function statusClass(status: TaxStatus) {
   return status.toLowerCase().replace(" ", "-");
 }
 
-function mergeByKey<T>(remote: T[], local: T[], keyOf: (item: T) => string) {
+function timestamp(value?: string) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sameJson(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function mergeByKey<T extends { updatedAt?: string }>(
+  remote: T[],
+  local: T[],
+  keyOf: (item: T) => string
+) {
   const map = new Map<string, T>();
   remote.forEach((item) => map.set(keyOf(item), item));
+
   local.forEach((item) => {
     const key = keyOf(item);
-    map.set(key, { ...(map.get(key) || {} as T), ...item });
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { ...item, updatedAt: item.updatedAt || nowISO() });
+      return;
+    }
+
+    if (timestamp(item.updatedAt) > timestamp(existing.updatedAt)) {
+      map.set(key, { ...existing, ...item });
+    }
   });
+
   return [...map.values()];
 }
 
@@ -181,7 +236,10 @@ export default function FiscalPanel({ invoices }: Props) {
         // Si falla la lectura local, intentamos recuperar desde Supabase.
       }
 
-      const hadLocalData = loadedExpenses.length > 0 || loadedRecords.length > 0 || loadedDeletedExpenseIds.length > 0;
+      const hadLocalData =
+        loadedExpenses.length > 0 ||
+        loadedRecords.length > 0 ||
+        loadedDeletedExpenseIds.length > 0;
 
       try {
         const response = await fetch("/api/fiscal", { cache: "no-store" });
@@ -207,7 +265,7 @@ export default function FiscalPanel({ invoices }: Props) {
           );
 
           if (hadLocalData) {
-            await fetch("/api/fiscal", {
+            const syncResponse = await fetch("/api/fiscal", {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -216,6 +274,24 @@ export default function FiscalPanel({ invoices }: Props) {
                 deletedExpenseIds: loadedDeletedExpenseIds
               })
             });
+            const synced = await syncResponse.json().catch(() => ({}));
+            if (syncResponse.ok && synced.data) {
+              loadedDeletedExpenseIds = [...new Set([
+                ...loadedDeletedExpenseIds,
+                ...(synced.data.deletedExpenseIds || [])
+              ])];
+              const syncedDeleted = new Set(loadedDeletedExpenseIds);
+              loadedExpenses = mergeByKey<Expense>(
+                synced.data.expenses || [],
+                loadedExpenses,
+                (item) => item.id
+              ).filter((item) => !syncedDeleted.has(item.id));
+              loadedRecords = mergeByKey<TaxRecord>(
+                synced.data.taxRecords || [],
+                loadedRecords,
+                (item) => item.key
+              );
+            }
           }
         }
       } catch {
@@ -228,7 +304,7 @@ export default function FiscalPanel({ invoices }: Props) {
       setReady(true);
     }
 
-    loadFiscalData();
+    void loadFiscalData();
   }, []);
 
   useEffect(() => {
@@ -240,15 +316,37 @@ export default function FiscalPanel({ invoices }: Props) {
 
     const timer = window.setTimeout(async () => {
       try {
-        await fetch("/api/fiscal", {
+        const response = await fetch("/api/fiscal", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ expenses, taxRecords: records, deletedExpenseIds })
         });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.data) return;
+
+        const remoteDeleted = [...new Set([
+          ...deletedExpenseIds,
+          ...(result.data.deletedExpenseIds || [])
+        ])];
+        const deletedSet = new Set(remoteDeleted);
+        const nextExpenses = mergeByKey<Expense>(
+          result.data.expenses || [],
+          expenses,
+          (item) => item.id
+        ).filter((item) => !deletedSet.has(item.id));
+        const nextRecords = mergeByKey<TaxRecord>(
+          result.data.taxRecords || [],
+          records,
+          (item) => item.key
+        );
+
+        if (!sameJson(remoteDeleted, deletedExpenseIds)) setDeletedExpenseIds(remoteDeleted);
+        if (!sameJson(nextExpenses, expenses)) setExpenses(nextExpenses);
+        if (!sameJson(nextRecords, records)) setRecords(nextRecords);
       } catch {
         // La copia local sigue siendo el respaldo inmediato del dispositivo.
       }
-    }, 600);
+    }, 700);
 
     return () => window.clearTimeout(timer);
   }, [expenses, records, deletedExpenseIds, ready]);
@@ -266,27 +364,25 @@ export default function FiscalPanel({ invoices }: Props) {
         const result = await response.json();
         if (!response.ok || !result.data || cancelled) return;
 
-        const remoteDeleted = result.data.deletedExpenseIds || [];
-        if (remoteDeleted.length) {
-          setDeletedExpenseIds((current) => [...new Set([...current, ...remoteDeleted])]);
-        }
-        if (result.data.expenses) {
-          setExpenses((current) => {
-            const deletedSet = new Set([...deletedExpenseIds, ...remoteDeleted]);
-            return mergeByKey<Expense>(
-              current,
-              result.data.expenses,
-              (item) => item.id
-            ).filter((item) => !deletedSet.has(item.id));
-          });
-        }
-        if (result.data.taxRecords) {
-          setRecords((current) => mergeByKey<TaxRecord>(
-            current,
-            result.data.taxRecords,
-            (item) => item.key
-          ));
-        }
+        const remoteDeleted = [...new Set([
+          ...deletedExpenseIds,
+          ...(result.data.deletedExpenseIds || [])
+        ])];
+        const deletedSet = new Set(remoteDeleted);
+        const nextExpenses = mergeByKey<Expense>(
+          result.data.expenses || [],
+          expenses,
+          (item) => item.id
+        ).filter((item) => !deletedSet.has(item.id));
+        const nextRecords = mergeByKey<TaxRecord>(
+          result.data.taxRecords || [],
+          records,
+          (item) => item.key
+        );
+
+        if (!sameJson(remoteDeleted, deletedExpenseIds)) setDeletedExpenseIds(remoteDeleted);
+        if (!sameJson(nextExpenses, expenses)) setExpenses(nextExpenses);
+        if (!sameJson(nextRecords, records)) setRecords(nextRecords);
       } catch {
         // Conserva los datos locales si no hay conexión.
       }
@@ -301,7 +397,7 @@ export default function FiscalPanel({ invoices }: Props) {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);
     };
-  }, [ready, deletedExpenseIds]);
+  }, [ready, deletedExpenseIds, expenses, records]);
 
   const availableYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -332,10 +428,14 @@ export default function FiscalPanel({ invoices }: Props) {
 
   const quarterInvoices = useMemo(
     () => invoices.filter(
-      (invoice) =>
-        invoice.status !== "Anulada" &&
-        yearOf(invoice.issueDate) === year &&
-        quarterOf(invoice.issueDate) === quarter
+      (invoice) => {
+        const taxDate = invoiceTaxDate(invoice);
+        return (
+          invoiceCountsAsIssued(invoice) &&
+          yearOf(taxDate) === year &&
+          quarterOf(taxDate) === quarter
+        );
+      }
     ),
     [invoices, year, quarter]
   );
@@ -387,10 +487,14 @@ export default function FiscalPanel({ invoices }: Props) {
 
   const cumulativeStats = useMemo(() => {
     const ytdInvoices = invoices.filter(
-      (invoice) =>
-        invoice.status !== "Anulada" &&
-        yearOf(invoice.issueDate) === year &&
-        quarterOf(invoice.issueDate) <= quarter
+      (invoice) => {
+        const taxDate = invoiceTaxDate(invoice);
+        return (
+          invoiceCountsAsIssued(invoice) &&
+          yearOf(taxDate) === year &&
+          quarterOf(taxDate) <= quarter
+        );
+      }
     );
     const ytdExpenses = expenses.filter(
       (expense) =>
@@ -419,7 +523,8 @@ export default function FiscalPanel({ invoices }: Props) {
         (record) =>
           record.year === year &&
           record.quarter < quarter &&
-          record.model130 === "Pagado"
+          Number(record.model130Paid || 0) > 0 &&
+          ["Presentado", "Pagado"].includes(record.model130)
       )
       .reduce((sum, record) => sum + Number(record.model130Paid || 0), 0);
 
@@ -442,19 +547,30 @@ export default function FiscalPanel({ invoices }: Props) {
 
   const nextPending = useMemo(() => {
     const today = todayISO();
-    const candidates: Array<{ label: string; due: string; quarter: number; model: string }> = [];
+    const candidates: Array<{
+      label: string;
+      due: string;
+      quarter: number;
+      model: string;
+      overdue: boolean;
+    }> = [];
+
     for (const q of visibleQuarters) {
       const record = records.find((item) => item.key === `${year}-Q${q}`) || emptyRecord(year, q);
       const due = deadlineISO(year, q);
-      if (due < today) continue;
+
       if (!["Presentado", "Pagado", "No aplica"].includes(record.model303)) {
-        candidates.push({ label: `303 · T${q}`, due, quarter: q, model: "303" });
+        candidates.push({ label: `303 · T${q}`, due, quarter: q, model: "303", overdue: due < today });
       }
       if (!["Presentado", "Pagado", "No aplica"].includes(record.model130)) {
-        candidates.push({ label: `130 · T${q}`, due, quarter: q, model: "130" });
+        candidates.push({ label: `130 · T${q}`, due, quarter: q, model: "130", overdue: due < today });
       }
     }
-    return candidates.sort((a, b) => a.due.localeCompare(b.due))[0] || null;
+
+    return candidates.sort((a, b) => {
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      return a.due.localeCompare(b.due);
+    })[0] || null;
   }, [records, year, visibleQuarters]);
 
   function flash(message: string) {
@@ -467,6 +583,11 @@ export default function FiscalPanel({ invoices }: Props) {
       return flash("Fecha, proveedor y concepto son obligatorios.");
     }
 
+    if (Number(expenseDraft.base) < 0) return flash("La base imponible no puede ser negativa.");
+    if (Number(expenseDraft.vatRate) < 0 || Number(expenseDraft.vatRate) > 100) return flash("Revisa el porcentaje de IVA.");
+    if (Number(expenseDraft.irpfDeductiblePct) < 0 || Number(expenseDraft.irpfDeductiblePct) > 100) return flash("El deducible IRPF debe estar entre 0% y 100%.");
+    if (Number(expenseDraft.vatDeductiblePct) < 0 || Number(expenseDraft.vatDeductiblePct) > 100) return flash("El deducible IVA debe estar entre 0% y 100%.");
+
     const item: Expense = {
       ...expenseDraft,
       id: expenseDraft.id || uid(),
@@ -476,7 +597,8 @@ export default function FiscalPanel({ invoices }: Props) {
       base: Number(expenseDraft.base || 0),
       vatRate: Number(expenseDraft.vatRate || 0),
       irpfDeductiblePct: Number(expenseDraft.irpfDeductiblePct || 0),
-      vatDeductiblePct: Number(expenseDraft.vatDeductiblePct || 0)
+      vatDeductiblePct: Number(expenseDraft.vatDeductiblePct || 0),
+      updatedAt: nowISO()
     };
 
     setExpenses((current) =>
@@ -500,7 +622,7 @@ export default function FiscalPanel({ invoices }: Props) {
     const key = `${year}-Q${quarter}`;
     setRecords((current) => {
       const found = current.find((record) => record.key === key);
-      const next = { ...(found || emptyRecord(year, quarter)), ...patch, key, year, quarter };
+      const next = { ...(found || emptyRecord(year, quarter)), ...patch, key, year, quarter, updatedAt: nowISO() };
       return found
         ? current.map((record) => (record.key === key ? next : record))
         : [...current, next];
@@ -519,7 +641,7 @@ export default function FiscalPanel({ invoices }: Props) {
         <div>
           <p className="eyebrow">Control fiscal</p>
           <h1>Trimestrales</h1>
-          <p className="muted">Facturas emitidas, gastos, IVA, retenciones y estado de tus modelos. Puedes cambiar de ejercicio para consultar años anteriores.</p>
+          <p className="muted">Facturas emitidas, gastos, IVA, retenciones y estado de tus modelos. Los borradores no computan y el trimestre se asigna por fecha de operación o fin del periodo mensual.</p>
         </div>
         <label className="year-select">
           Ejercicio
@@ -540,8 +662,16 @@ export default function FiscalPanel({ invoices }: Props) {
 
       <div className="fiscal-alert">
         <div>
-          <strong>{nextPending ? `Próximo pendiente: ${nextPending.label}` : "No hay vencimientos pendientes futuros en este ejercicio"}</strong>
-          <span>{nextPending ? `Límite general: ${new Date(`${nextPending.due}T12:00:00`).toLocaleDateString("es-ES")}` : "Revisa igualmente las obligaciones anuales."}</span>
+          <strong>
+            {nextPending
+              ? `${nextPending.overdue ? "VENCIDO" : "Próximo pendiente"}: ${nextPending.label}`
+              : "No hay modelos trimestrales pendientes en este ejercicio"}
+          </strong>
+          <span>
+            {nextPending
+              ? `Límite general: ${new Date(`${nextPending.due}T12:00:00`).toLocaleDateString("es-ES")}`
+              : "Revisa igualmente las obligaciones anuales."}
+          </span>
         </div>
         <span className="fiscal-alert-note">Si el último día es inhábil, el vencimiento puede desplazarse.</span>
       </div>
