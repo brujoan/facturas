@@ -195,6 +195,7 @@ export default function InvoiceApp() {
   });
   const [activityDraft, setActivityDraft] = useState({ name: "", vat: 21, withholding: 0 });
   const [notice, setNotice] = useState("");
+  const [remoteConfigured, setRemoteConfigured] = useState(false);
 
   useEffect(() => {
     const read = <T,>(key: string, fallback: T): T => {
@@ -206,34 +207,63 @@ export default function InvoiceApp() {
       }
     };
 
-    const loadedActivities = read<ActivityPreset[]>(storage.activities, defaultActivities);
-    setIssuer(read<Issuer>(storage.issuer, blankIssuer));
-    setClients(read<Client[]>(storage.clients, []));
-    setActivities(loadedActivities.length ? loadedActivities : defaultActivities);
-    setInvoices(read<Invoice[]>(storage.invoices, []));
-    setDraft(emptyInvoice(loadedActivities[0] || defaultActivities[0]));
-    setReady(true);
+    async function load() {
+      let loadedIssuer = read<Issuer>(storage.issuer, blankIssuer);
+      let loadedClients = read<Client[]>(storage.clients, []);
+      let loadedActivities = read<ActivityPreset[]>(storage.activities, defaultActivities);
+      let loadedInvoices = read<Invoice[]>(storage.invoices, []);
+
+      try {
+        const response = await fetch("/api/data", { cache: "no-store" });
+        const result = await response.json();
+        if (response.ok && result.configured) {
+          setRemoteConfigured(true);
+          if (result.data) {
+            loadedIssuer = result.data.issuer || blankIssuer;
+            loadedClients = result.data.clients || [];
+            loadedActivities = result.data.activities?.length ? result.data.activities : defaultActivities;
+            loadedInvoices = result.data.invoices || [];
+          }
+        }
+      } catch {
+        // Si la base de datos no está disponible, la app sigue funcionando en local.
+      }
+
+      setIssuer(loadedIssuer);
+      setClients(loadedClients);
+      setActivities(loadedActivities.length ? loadedActivities : defaultActivities);
+      setInvoices(loadedInvoices);
+      setDraft(emptyInvoice(loadedActivities[0] || defaultActivities[0]));
+      setReady(true);
+    }
+
+    load();
   }, []);
 
   useEffect(() => {
     if (!ready) return;
+
     localStorage.setItem(storage.issuer, JSON.stringify(issuer));
-  }, [issuer, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
     localStorage.setItem(storage.clients, JSON.stringify(clients));
-  }, [clients, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
     localStorage.setItem(storage.activities, JSON.stringify(activities));
-  }, [activities, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
     localStorage.setItem(storage.invoices, JSON.stringify(invoices));
-  }, [invoices, ready]);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/data", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ issuer, clients, activities, invoices })
+        });
+        const result = await response.json();
+        if (response.ok && result.configured) setRemoteConfigured(true);
+      } catch {
+        // El guardado local sigue siendo la copia de respaldo del navegador.
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [issuer, clients, activities, invoices, ready]);
 
   const draftTotals = useMemo(() => totals(draft), [draft]);
   const recentInvoices = useMemo(
@@ -692,7 +722,11 @@ export default function InvoiceApp() {
                     <label>Provincia<input value={issuer.province} onChange={(e) => setIssuer({ ...issuer, province: e.target.value })} /></label>
                     <label className="span-2">IBAN<input value={issuer.iban} onChange={(e) => setIssuer({ ...issuer, iban: e.target.value })} /></label>
                   </div>
-                  <p className="saved-note">Los cambios se guardan automáticamente en este navegador.</p>
+                  <p className="saved-note">
+                    {remoteConfigured
+                      ? "Los cambios se guardan automáticamente en la base de datos y también en este navegador."
+                      : "Los cambios se guardan automáticamente en este navegador hasta conectar la base de datos."}
+                  </p>
                 </div>
 
                 <div className="panel">
@@ -720,7 +754,11 @@ export default function InvoiceApp() {
 
                 <div className="panel data-warning">
                   <h2>Datos y copias de seguridad</h2>
-                  <p>En esta primera versión las facturas y clientes se guardan localmente en el navegador del dispositivo. La contraseña sí se valida en el servidor. Para uso multidispositivo o copias automáticas, el siguiente paso es conectar una base de datos cifrada.</p>
+                  <p>
+                    {remoteConfigured
+                      ? "Base de datos conectada: facturas, clientes, actividades y configuración quedan sincronizados entre dispositivos. El navegador conserva además una copia local."
+                      : "Modo local activo: facturas y clientes se guardan en este navegador. En cuanto configuremos Supabase, la misma interfaz pasará a sincronizar los datos entre dispositivos."}
+                  </p>
                 </div>
               </div>
             </section>
