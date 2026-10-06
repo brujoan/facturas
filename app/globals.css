@@ -578,3 +578,30 @@ h3 { margin-bottom: 8px; }
     font-size: 14px;
   }
 }
+
+/* Datos de contacto y edición de clientes */
+.client-card > div:first-child { min-width: 0; }
+.client-card .contact-label { display: inline; font-size: inherit; font-weight: 700; }
+.client-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #536171;
+  background: #f6f8fa;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.client-actions, .client-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.client-form-actions { margin-top: 18px; }
+.client-actions { flex-shrink: 0; }
+.field-hint { color: var(--muted); font-size: 11px; font-weight: 400; }
+@media (max-width: 760px) {
+  .client-card { align-items: flex-start; flex-direction: column; }
+  .client-actions { width: 100%; justify-content: flex-end; }
+}
