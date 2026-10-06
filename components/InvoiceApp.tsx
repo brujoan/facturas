@@ -1499,7 +1499,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               </div>
 
               <div className="panel table-panel">
-                {recentInvoices.length === 0 ? (
+                {invoices.length === 0 ? (
                   <div className="empty-state">
                     <div>⌁</div>
                     <h3>Todavía no hay facturas</h3>
