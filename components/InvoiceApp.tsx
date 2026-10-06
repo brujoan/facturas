@@ -71,6 +71,7 @@ type Invoice = {
   notes: string;
   paymentMethod: string;
   status: Status;
+  internalNote?: string;
   createdAt: string;
 };
 
@@ -186,6 +187,7 @@ function emptyInvoice(activity?: ActivityPreset): Invoice {
     notes: "",
     paymentMethod: "Transferencia bancaria",
     status: "Borrador",
+    internalNote: "",
     createdAt: new Date().toISOString()
   };
 }
@@ -704,6 +706,12 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     setTab("nueva");
   }
 
+  function updateInvoiceInternalNote(id: string, internalNote: string) {
+    setInvoices((current) =>
+      current.map((invoice) => invoice.id === id ? { ...invoice, internalNote } : invoice)
+    );
+  }
+
   function deleteInvoice(id: string) {
     if (!window.confirm("¿Eliminar esta factura? Esta acción no se puede deshacer.")) return;
     setInvoices((current) => current.filter((item) => item.id !== id));
@@ -933,6 +941,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                           <th>Cliente</th>
                           <th>Estado</th>
                           <th className="right">Total</th>
+                          <th>Observaciones</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -947,6 +956,14 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                               <td>{client?.name || "Cliente eliminado"}</td>
                               <td><span className={`status ${invoice.status.toLowerCase()}`}>{invoice.status}</span></td>
                               <td className="right"><strong>{currency(t.base + t.vat - t.withholding)}</strong></td>
+                              <td className="invoice-observation-cell">
+                                <input
+                                  value={invoice.internalNote || ""}
+                                  onChange={(e) => updateInvoiceInternalNote(invoice.id, e.target.value)}
+                                  placeholder="Ej. Operador cámara Barça–Sevilla"
+                                  aria-label={`Observaciones internas de ${invoice.number || "factura"}`}
+                                />
+                              </td>
                               <td className="actions">
                                 <button onClick={() => printInvoice(invoice)}>PDF</button>
                                 <button onClick={() => editInvoice(invoice)}>Editar</button>
