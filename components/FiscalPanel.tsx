@@ -52,6 +52,7 @@ type RecurringExpense = {
   vatDeductiblePct: number;
   startMonth: string;
   endMonth: string;
+  dayOfMonth: number;
   active: boolean;
   updatedAt?: string;
 };
@@ -187,6 +188,7 @@ function blankRecurringExpense(): RecurringExpense {
     vatDeductiblePct: 0,
     startMonth: "2026-08",
     endMonth: "",
+    dayOfMonth: 30,
     active: true
   };
 }
