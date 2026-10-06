@@ -299,14 +299,21 @@ export default function FiscalPanel({ invoices }: Props) {
       let loadedExpenses: Expense[] = [];
       let loadedRecords: TaxRecord[] = [];
       let loadedDeletedExpenseIds: string[] = [];
+      let loadedRecurringExpenses: RecurringExpense[] = [];
+      let loadedDeletedRecurringExpenseIds: string[] = [];
 
       try {
         const savedExpenses = localStorage.getItem(EXPENSES_KEY);
         const savedRecords = localStorage.getItem(TAX_RECORDS_KEY);
         const savedDeleted = localStorage.getItem(DELETED_EXPENSES_KEY);
+        const savedRecurring = localStorage.getItem(RECURRING_EXPENSES_KEY);
+        const savedDeletedRecurring = localStorage.getItem(DELETED_RECURRING_EXPENSES_KEY);
+
         loadedExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
         loadedRecords = savedRecords ? JSON.parse(savedRecords) : [];
         loadedDeletedExpenseIds = savedDeleted ? JSON.parse(savedDeleted) : [];
+        loadedRecurringExpenses = savedRecurring ? JSON.parse(savedRecurring) : [];
+        loadedDeletedRecurringExpenseIds = savedDeletedRecurring ? JSON.parse(savedDeletedRecurring) : [];
       } catch {
         // Si falla la lectura local, intentamos recuperar desde Supabase.
       }
@@ -314,18 +321,27 @@ export default function FiscalPanel({ invoices }: Props) {
       const hadLocalData =
         loadedExpenses.length > 0 ||
         loadedRecords.length > 0 ||
-        loadedDeletedExpenseIds.length > 0;
+        loadedDeletedExpenseIds.length > 0 ||
+        loadedRecurringExpenses.length > 0 ||
+        loadedDeletedRecurringExpenseIds.length > 0;
 
       try {
         const response = await fetch("/api/fiscal", { cache: "no-store" });
         const result = await response.json();
         if (response.ok && result.configured) {
           const remote = result.data || {};
+
           loadedDeletedExpenseIds = [...new Set([
             ...(remote.deletedExpenseIds || []),
             ...loadedDeletedExpenseIds
           ])];
+          loadedDeletedRecurringExpenseIds = [...new Set([
+            ...(remote.deletedRecurringExpenseIds || []),
+            ...loadedDeletedRecurringExpenseIds
+          ])];
+
           const deletedSet = new Set(loadedDeletedExpenseIds);
+          const deletedRecurringSet = new Set(loadedDeletedRecurringExpenseIds);
 
           loadedExpenses = mergeByKey<Expense>(
             remote.expenses || [],
@@ -339,6 +355,12 @@ export default function FiscalPanel({ invoices }: Props) {
             (item) => item.key
           );
 
+          loadedRecurringExpenses = mergeByKey<RecurringExpense>(
+            remote.recurringExpenses || [],
+            loadedRecurringExpenses,
+            (item) => item.id
+          ).filter((item) => !deletedRecurringSet.has(item.id));
+
           if (hadLocalData) {
             const syncResponse = await fetch("/api/fiscal", {
               method: "PUT",
@@ -346,26 +368,43 @@ export default function FiscalPanel({ invoices }: Props) {
               body: JSON.stringify({
                 expenses: loadedExpenses,
                 taxRecords: loadedRecords,
-                deletedExpenseIds: loadedDeletedExpenseIds
+                deletedExpenseIds: loadedDeletedExpenseIds,
+                recurringExpenses: loadedRecurringExpenses,
+                deletedRecurringExpenseIds: loadedDeletedRecurringExpenseIds
               })
             });
+
             const synced = await syncResponse.json().catch(() => ({}));
             if (syncResponse.ok && synced.data) {
               loadedDeletedExpenseIds = [...new Set([
                 ...loadedDeletedExpenseIds,
                 ...(synced.data.deletedExpenseIds || [])
               ])];
+              loadedDeletedRecurringExpenseIds = [...new Set([
+                ...loadedDeletedRecurringExpenseIds,
+                ...(synced.data.deletedRecurringExpenseIds || [])
+              ])];
+
               const syncedDeleted = new Set(loadedDeletedExpenseIds);
+              const syncedDeletedRecurring = new Set(loadedDeletedRecurringExpenseIds);
+
               loadedExpenses = mergeByKey<Expense>(
                 synced.data.expenses || [],
                 loadedExpenses,
                 (item) => item.id
               ).filter((item) => !syncedDeleted.has(item.id));
+
               loadedRecords = mergeByKey<TaxRecord>(
                 synced.data.taxRecords || [],
                 loadedRecords,
                 (item) => item.key
               );
+
+              loadedRecurringExpenses = mergeByKey<RecurringExpense>(
+                synced.data.recurringExpenses || [],
+                loadedRecurringExpenses,
+                (item) => item.id
+              ).filter((item) => !syncedDeletedRecurring.has(item.id));
             }
           }
         }
@@ -376,6 +415,8 @@ export default function FiscalPanel({ invoices }: Props) {
       setExpenses(loadedExpenses);
       setRecords(loadedRecords);
       setDeletedExpenseIds(loadedDeletedExpenseIds);
+      setRecurringExpenses(loadedRecurringExpenses);
+      setDeletedRecurringExpenseIds(loadedDeletedRecurringExpenseIds);
       setReady(true);
     }
 
@@ -388,14 +429,23 @@ export default function FiscalPanel({ invoices }: Props) {
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
     localStorage.setItem(TAX_RECORDS_KEY, JSON.stringify(records));
     localStorage.setItem(DELETED_EXPENSES_KEY, JSON.stringify(deletedExpenseIds));
+    localStorage.setItem(RECURRING_EXPENSES_KEY, JSON.stringify(recurringExpenses));
+    localStorage.setItem(DELETED_RECURRING_EXPENSES_KEY, JSON.stringify(deletedRecurringExpenseIds));
 
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch("/api/fiscal", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expenses, taxRecords: records, deletedExpenseIds })
+          body: JSON.stringify({
+            expenses,
+            taxRecords: records,
+            deletedExpenseIds,
+            recurringExpenses,
+            deletedRecurringExpenseIds
+          })
         });
+
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.data) return;
 
@@ -403,28 +453,51 @@ export default function FiscalPanel({ invoices }: Props) {
           ...deletedExpenseIds,
           ...(result.data.deletedExpenseIds || [])
         ])];
+        const remoteDeletedRecurring = [...new Set([
+          ...deletedRecurringExpenseIds,
+          ...(result.data.deletedRecurringExpenseIds || [])
+        ])];
+
         const deletedSet = new Set(remoteDeleted);
+        const deletedRecurringSet = new Set(remoteDeletedRecurring);
+
         const nextExpenses = mergeByKey<Expense>(
           result.data.expenses || [],
           expenses,
           (item) => item.id
         ).filter((item) => !deletedSet.has(item.id));
+
         const nextRecords = mergeByKey<TaxRecord>(
           result.data.taxRecords || [],
           records,
           (item) => item.key
         );
 
+        const nextRecurringExpenses = mergeByKey<RecurringExpense>(
+          result.data.recurringExpenses || [],
+          recurringExpenses,
+          (item) => item.id
+        ).filter((item) => !deletedRecurringSet.has(item.id));
+
         if (!sameJson(remoteDeleted, deletedExpenseIds)) setDeletedExpenseIds(remoteDeleted);
+        if (!sameJson(remoteDeletedRecurring, deletedRecurringExpenseIds)) setDeletedRecurringExpenseIds(remoteDeletedRecurring);
         if (!sameJson(nextExpenses, expenses)) setExpenses(nextExpenses);
         if (!sameJson(nextRecords, records)) setRecords(nextRecords);
+        if (!sameJson(nextRecurringExpenses, recurringExpenses)) setRecurringExpenses(nextRecurringExpenses);
       } catch {
         // La copia local sigue siendo el respaldo inmediato del dispositivo.
       }
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [expenses, records, deletedExpenseIds, ready]);
+  }, [
+    expenses,
+    records,
+    deletedExpenseIds,
+    recurringExpenses,
+    deletedRecurringExpenseIds,
+    ready
+  ]);
 
   useEffect(() => {
     if (!ready) return;
@@ -443,21 +516,37 @@ export default function FiscalPanel({ invoices }: Props) {
           ...deletedExpenseIds,
           ...(result.data.deletedExpenseIds || [])
         ])];
+        const remoteDeletedRecurring = [...new Set([
+          ...deletedRecurringExpenseIds,
+          ...(result.data.deletedRecurringExpenseIds || [])
+        ])];
+
         const deletedSet = new Set(remoteDeleted);
+        const deletedRecurringSet = new Set(remoteDeletedRecurring);
+
         const nextExpenses = mergeByKey<Expense>(
           result.data.expenses || [],
           expenses,
           (item) => item.id
         ).filter((item) => !deletedSet.has(item.id));
+
         const nextRecords = mergeByKey<TaxRecord>(
           result.data.taxRecords || [],
           records,
           (item) => item.key
         );
 
+        const nextRecurringExpenses = mergeByKey<RecurringExpense>(
+          result.data.recurringExpenses || [],
+          recurringExpenses,
+          (item) => item.id
+        ).filter((item) => !deletedRecurringSet.has(item.id));
+
         if (!sameJson(remoteDeleted, deletedExpenseIds)) setDeletedExpenseIds(remoteDeleted);
+        if (!sameJson(remoteDeletedRecurring, deletedRecurringExpenseIds)) setDeletedRecurringExpenseIds(remoteDeletedRecurring);
         if (!sameJson(nextExpenses, expenses)) setExpenses(nextExpenses);
         if (!sameJson(nextRecords, records)) setRecords(nextRecords);
+        if (!sameJson(nextRecurringExpenses, recurringExpenses)) setRecurringExpenses(nextRecurringExpenses);
       } catch {
         // Conserva los datos locales si no hay conexión.
       }
@@ -472,7 +561,61 @@ export default function FiscalPanel({ invoices }: Props) {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);
     };
-  }, [ready, deletedExpenseIds, expenses, records]);
+  }, [
+    ready,
+    deletedExpenseIds,
+    expenses,
+    records,
+    recurringExpenses,
+    deletedRecurringExpenseIds
+  ]);
+
+  useEffect(() => {
+    if (!ready || recurringExpenses.length === 0) return;
+
+    const today = todayISO();
+    const currentMonth = today.slice(0, 7);
+    const currentDay = Number(today.slice(8, 10));
+    const deletedSet = new Set(deletedExpenseIds);
+    const existingIds = new Set(expenses.map((expense) => expense.id));
+    const additions: Expense[] = [];
+
+    for (const recurring of recurringExpenses) {
+      if (!recurring.active || !recurring.startMonth) continue;
+
+      const endMonth =
+        recurring.endMonth && recurring.endMonth < currentMonth
+          ? recurring.endMonth
+          : currentMonth;
+
+      for (const monthKey of monthKeysFrom(recurring.startMonth, endMonth)) {
+        if (monthKey === currentMonth && currentDay < Number(recurring.dayOfMonth || 1)) continue;
+
+        const id = recurringExpenseId(recurring.id, monthKey);
+        if (deletedSet.has(id) || existingIds.has(id)) continue;
+
+        const day = Math.max(1, Math.min(28, Number(recurring.dayOfMonth || 1)));
+        additions.push({
+          id,
+          date: `${monthKey}-${String(day).padStart(2, "0")}`,
+          supplier: recurring.supplier,
+          taxId: "",
+          concept: recurring.concept,
+          base: Number(recurring.monthlyAmount || 0),
+          vatRate: Number(recurring.vatRate || 0),
+          irpfDeductiblePct: Number(recurring.irpfDeductiblePct || 0),
+          vatDeductiblePct: Number(recurring.vatDeductiblePct || 0),
+          hasReceipt: false,
+          notes: "Generado automáticamente desde gasto recurrente.",
+          recurringExpenseId: recurring.id,
+          recurringMonth: monthKey,
+          updatedAt: nowISO()
+        });
+      }
+    }
+
+    if (additions.length) setExpenses((current) => [...current, ...additions]);
+  }, [ready, recurringExpenses, expenses, deletedExpenseIds]);
 
   const availableYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
