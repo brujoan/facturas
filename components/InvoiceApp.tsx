@@ -874,10 +874,11 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     const groups = new Map<string, { year: number; month: number; invoices: number; total: number }>();
 
     invoices
-      .filter((invoice) => invoiceCountsAsIssued(invoice) && invoice.issueDate)
+      .filter((invoice) => invoiceCountsAsIssued(invoice) && invoiceCalendarDate(invoice))
       .forEach((invoice) => {
-        const year = Number(invoice.issueDate.slice(0, 4));
-        const month = Number(invoice.issueDate.slice(5, 7));
+        const referenceDate = invoiceCalendarDate(invoice);
+        const year = Number(referenceDate.slice(0, 4));
+        const month = Number(referenceDate.slice(5, 7));
         if (!year || !month) return;
 
         const key = `${year}-${String(month).padStart(2, "0")}`;
