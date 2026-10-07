@@ -12,6 +12,7 @@ const app = file("components/InvoiceApp.tsx");
 const fiscal = file("components/FiscalPanel.tsx");
 const edge = file("supabase/functions/facturas-sync/index.ts");
 const invoicePdf = file("lib/invoicePdf.ts");
+const styles = file("app/globals.css");
 
 assert(app.includes('status: draft.status') || app.includes('...draft,'), "Guardar factura debe respetar el estado seleccionado.");
 assert(!app.includes('draft.status === "Borrador" ? "Emitida"'), "Un borrador nunca debe convertirse automáticamente en emitida.");
@@ -33,7 +34,7 @@ assert(!invoicePdf.includes("operationDate"), "El PDF de cliente no debe incluir
 assert(invoicePdf.includes("issueDate.split(\"-\").join(\"_\")"), "El nombre del PDF debe comenzar por la fecha de emisión.");
 assert(!invoicePdf.includes('field === "withholding" && rate === 0'), "El PDF debe mostrar también la línea de IRPF cuando el tipo sea 0%.");
 assert(app.includes("billingCalendarOpen"), "Facturado debe abrir el calendario visual mensual.");
-assert(app.includes("billingCalendarData"), "El calendario debe agrupar la facturación por día.");
+assert(app.includes("billingCalendarMonths") && app.includes("byDay"), "El calendario debe agrupar la facturación por día.");
 assert(app.includes("Acumulado mensual"), "La vista de Facturado debe mostrar acumulado mensual.");
 assert(app.includes("invoiceCalendarDate"), "El calendario debe usar una fecha de referencia específica por tipo de factura.");
 assert(app.includes('invoice.invoiceMode || "normal") === "monthly"'), "Las facturas mensuales deben identificarse para usar fecha de emisión.");
@@ -61,5 +62,12 @@ assert(app.includes("collectionDateFrom") && app.includes("collectionDateTo"), "
 assert(app.includes('toggleInvoiceSort("collectionDate")'), "La columna de cobro debe poder ordenarse.");
 assert(app.includes('billingVisible ? currency(t.base + t.vat - t.withholding) : "•••• €"'), "Los importes individuales deben respetar el modo oculto de Facturado.");
 assert(!app.includes("<label>Vencimiento"), "La interfaz ya no debe mostrar fecha de vencimiento.");
+assert(app.includes('type BillingCalendarView = "month" | "three" | "year"'), "Facturado debe ofrecer vistas de 1 mes, 3 meses y año natural.");
+assert(app.includes('billingCalendarView === "three"'), "La vista de 3 meses debe estar implementada.");
+assert(app.includes('billingCalendarView === "year"'), "La vista de año natural debe estar implementada.");
+assert(app.includes("billingCalendarMonths"), "El calendario multivista debe calcular datos por mes.");
+assert(styles.includes(".invoice-list-table") && styles.includes("table-layout: fixed"), "La lista de facturas debe ajustarse al ancho sin scroll horizontal.");
+assert(styles.includes(".billing-calendar-collection.year"), "El calendario anual debe tener una cuadrícula compacta.");
+assert(styles.includes("overflow: hidden") && styles.includes(".billing-modal"), "El modal de Facturado debe evitar desplazamiento interno innecesario.");
 
 console.log("Stability checks OK");
