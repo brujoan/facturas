@@ -6,6 +6,7 @@ import { buildInvoicePdf } from "@/lib/invoicePdf";
 
 type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
+type BillingCalendarView = "month" | "three" | "year";
 type InvoiceMode = "normal" | "monthly";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
 type InvoiceSortKey = "number" | "date" | "collectionDate" | "client" | "status" | "total";
@@ -361,6 +362,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [billingVisible, setBillingVisible] = useState(false);
   const [billingCalendarOpen, setBillingCalendarOpen] = useState(false);
   const [billingCalendarMonth, setBillingCalendarMonth] = useState(() => dateISO().slice(0, 7));
+  const [billingCalendarView, setBillingCalendarView] = useState<BillingCalendarView>("month");
   const [selectedBillingDay, setSelectedBillingDay] = useState<string | null>(null);
   const [invoiceSort, setInvoiceSort] = useState<{ key: InvoiceSortKey; direction: SortDirection }>({
     key: "date",
@@ -893,35 +895,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
   const hasInvoiceFilters = Object.values(invoiceFilters).some(Boolean);
 
-  const monthlyBillingHistory = useMemo(() => {
-    const groups = new Map<string, { year: number; month: number; invoices: number; total: number }>();
-
-    invoices
-      .filter((invoice) => invoiceCountsForBilling(invoice) && invoiceCalendarDate(invoice))
-      .forEach((invoice) => {
-        const referenceDate = invoiceCalendarDate(invoice);
-        const year = Number(referenceDate.slice(0, 4));
-        const month = Number(referenceDate.slice(5, 7));
-        if (!year || !month) return;
-
-        const key = `${year}-${String(month).padStart(2, "0")}`;
-        const current = groups.get(key) || { year, month, invoices: 0, total: 0 };
-        const t = totals(invoice);
-        current.invoices += 1;
-        current.total += t.base + t.vat - t.withholding;
-        groups.set(key, current);
-      });
-
-    return [...groups.values()]
-      .sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month))
-      .slice(0, 18);
-  }, [invoices]);
-
-  const billingCalendarData = useMemo(() => {
-    const [year, month] = billingCalendarMonth.split("-").map(Number);
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
-
+  const billingCalendarMonths = useMemo(() => {
     type CalendarOperation = {
       invoiceId: string;
       invoiceNumber: string;
@@ -942,127 +916,195 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       operationTotal: number;
     };
 
-    const byDay = new Map<string, CalendarDay>();
-
-    function dayEntry(date: string) {
-      const existing = byDay.get(date);
-      if (existing) return existing;
-
-      const created: CalendarDay = {
-        invoices: [],
-        total: 0,
-        collected: 0,
-        receivable: 0,
-        drafts: 0,
-        operations: [],
-        operationTotal: 0
-      };
-      byDay.set(date, created);
-      return created;
+    function monthOffset(key: string, offset: number) {
+      const [year, month] = key.split("-").map(Number);
+      const target = new Date(year, month - 1 + offset, 1);
+      return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}`;
     }
 
-    const monthInvoices = invoices
-      .filter((invoice) => {
-        if (!invoiceCountsForBilling(invoice)) return false;
+    const [baseYear] = billingCalendarMonth.split("-").map(Number);
+    const monthKeys =
+      billingCalendarView === "month"
+        ? [billingCalendarMonth]
+        : billingCalendarView === "three"
+          ? [monthOffset(billingCalendarMonth, -1), billingCalendarMonth, monthOffset(billingCalendarMonth, 1)]
+          : Array.from({ length: 12 }, (_, index) => `${baseYear}-${String(index + 1).padStart(2, "0")}`);
+
+    return monthKeys.map((monthKey) => {
+      const [year, month] = monthKey.split("-").map(Number);
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+      const byDay = new Map<string, CalendarDay>();
+
+      function dayEntry(date: string) {
+        const existing = byDay.get(date);
+        if (existing) return existing;
+
+        const created: CalendarDay = {
+          invoices: [],
+          total: 0,
+          collected: 0,
+          receivable: 0,
+          drafts: 0,
+          operations: [],
+          operationTotal: 0
+        };
+        byDay.set(date, created);
+        return created;
+      }
+
+      const monthInvoices = invoices
+        .filter((invoice) => {
+          if (!invoiceCountsForBilling(invoice)) return false;
+          return invoiceCalendarDate(invoice)?.startsWith(`${monthKey}-`);
+        })
+        .sort((a, b) => {
+          const dateA = invoiceCalendarDate(a);
+          const dateB = invoiceCalendarDate(b);
+          return dateA.localeCompare(dateB) || a.createdAt.localeCompare(b.createdAt);
+        });
+
+      let total = 0;
+      let collected = 0;
+      let receivable = 0;
+      let drafts = 0;
+
+      for (const invoice of monthInvoices) {
+        const t = totals(invoice);
+        const value = money(t.base + t.vat - t.withholding);
         const referenceDate = invoiceCalendarDate(invoice);
-        return referenceDate?.startsWith(`${billingCalendarMonth}-`);
-      })
-      .sort((a, b) => {
-        const dateA = invoiceCalendarDate(a);
-        const dateB = invoiceCalendarDate(b);
-        return dateA.localeCompare(dateB) || a.createdAt.localeCompare(b.createdAt);
+
+        total = money(total + value);
+        if (invoice.status === "Cobrada") collected = money(collected + value);
+        if (invoice.status === "Emitida") receivable = money(receivable + value);
+        if (invoice.status === "Borrador") drafts = money(drafts + value);
+
+        const current = dayEntry(referenceDate);
+        current.invoices.push(invoice);
+        current.total = money(current.total + value);
+        if (invoice.status === "Cobrada") current.collected = money(current.collected + value);
+        if (invoice.status === "Emitida") current.receivable = money(current.receivable + value);
+        if (invoice.status === "Borrador") current.drafts = money(current.drafts + value);
+      }
+
+      for (const invoice of invoices) {
+        if (!invoiceCountsForBilling(invoice) || (invoice.invoiceMode || "normal") !== "monthly") continue;
+
+        for (const line of invoice.lines) {
+          if (!line.serviceDate?.startsWith(`${monthKey}-`)) continue;
+
+          const base = lineBase(line);
+          const value = money(
+            base +
+            base * (Number(line.vat || 0) / 100) -
+            base * (Number(line.withholding || 0) / 100)
+          );
+
+          const current = dayEntry(line.serviceDate);
+          current.operations.push({
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.number,
+            clientId: invoice.clientId,
+            lineId: line.id,
+            description: line.description,
+            value,
+            status: invoice.status
+          });
+          current.operationTotal = money(current.operationTotal + value);
+        }
+      }
+
+      let running = 0;
+      const cumulative = Array.from({ length: daysInMonth }, (_, index) => {
+        const day = index + 1;
+        const date = `${monthKey}-${String(day).padStart(2, "0")}`;
+        running = money(running + (byDay.get(date)?.total || 0));
+        return { day, value: running };
       });
 
-    let total = 0;
-    let collected = 0;
-    let receivable = 0;
-    let drafts = 0;
+      const max = Math.max(total, 1);
+      const chartPoints = cumulative
+        .map((item, index) => {
+          const x = daysInMonth === 1 ? 0 : (index / (daysInMonth - 1)) * 100;
+          const y = 30 - (item.value / max) * 26;
+          return `${x.toFixed(2)},${y.toFixed(2)}`;
+        })
+        .join(" ");
 
-    for (const invoice of monthInvoices) {
-      const t = totals(invoice);
-      const value = money(t.base + t.vat - t.withholding);
-      const referenceDate = invoiceCalendarDate(invoice);
-
-      total = money(total + value);
-      if (invoice.status === "Cobrada") collected = money(collected + value);
-      if (invoice.status === "Emitida") receivable = money(receivable + value);
-      if (invoice.status === "Borrador") drafts = money(drafts + value);
-
-      const current = dayEntry(referenceDate);
-      current.invoices.push(invoice);
-      current.total = money(current.total + value);
-      if (invoice.status === "Cobrada") current.collected = money(current.collected + value);
-      if (invoice.status === "Emitida") current.receivable = money(current.receivable + value);
-      if (invoice.status === "Borrador") current.drafts = money(current.drafts + value);
-    }
-
-    for (const invoice of invoices) {
-      if (!invoiceCountsForBilling(invoice) || (invoice.invoiceMode || "normal") !== "monthly") continue;
-
-      for (const line of invoice.lines) {
-        if (!line.serviceDate?.startsWith(`${billingCalendarMonth}-`)) continue;
-
-        const base = lineBase(line);
-        const value = money(
-          base +
-          base * (Number(line.vat || 0) / 100) -
-          base * (Number(line.withholding || 0) / 100)
-        );
-
-        const current = dayEntry(line.serviceDate);
-        current.operations.push({
-          invoiceId: invoice.id,
-          invoiceNumber: invoice.number,
-          clientId: invoice.clientId,
-          lineId: line.id,
-          description: line.description,
-          value,
-          status: invoice.status
-        });
-        current.operationTotal = money(current.operationTotal + value);
-      }
-    }
-
-    let running = 0;
-    const cumulative = Array.from({ length: daysInMonth }, (_, index) => {
-      const day = index + 1;
-      const date = `${billingCalendarMonth}-${String(day).padStart(2, "0")}`;
-      running = money(running + (byDay.get(date)?.total || 0));
-      return { day, value: running };
+      return {
+        key: monthKey,
+        year,
+        month,
+        daysInMonth,
+        firstWeekday,
+        byDay,
+        invoices: monthInvoices,
+        total,
+        collected,
+        receivable,
+        drafts,
+        cumulative,
+        chartPoints
+      };
     });
+  }, [invoices, billingCalendarMonth, billingCalendarView]);
 
-    const max = Math.max(total, 1);
-    const chartPoints = cumulative
-      .map((item, index) => {
-        const x = daysInMonth === 1 ? 0 : (index / (daysInMonth - 1)) * 100;
-        const y = 38 - (item.value / max) * 34;
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
-      })
-      .join(" ");
+  const billingCalendarViewData = useMemo(() => {
+    return billingCalendarMonths.reduce(
+      (acc, month) => {
+        acc.total = money(acc.total + month.total);
+        acc.collected = money(acc.collected + month.collected);
+        acc.receivable = money(acc.receivable + month.receivable);
+        acc.drafts = money(acc.drafts + month.drafts);
+        acc.invoices += month.invoices.length;
+        return acc;
+      },
+      { total: 0, collected: 0, receivable: 0, drafts: 0, invoices: 0 }
+    );
+  }, [billingCalendarMonths]);
 
-    return {
-      year,
-      month,
-      daysInMonth,
-      firstWeekday,
-      byDay,
-      invoices: monthInvoices,
-      total,
-      collected,
-      receivable,
-      drafts,
-      cumulative,
-      chartPoints
-    };
-  }, [invoices, billingCalendarMonth]);
+  const primaryBillingMonth =
+    billingCalendarMonths.find((month) => month.key === billingCalendarMonth) ||
+    billingCalendarMonths[0];
 
   const selectedBillingDayData = selectedBillingDay
-    ? billingCalendarData.byDay.get(selectedBillingDay)
+    ? billingCalendarMonths
+        .map((month) => month.byDay.get(selectedBillingDay))
+        .find(Boolean)
     : undefined;
 
-  function changeBillingCalendarMonth(offset: number) {
+  const billingCalendarTitle = useMemo(() => {
+    if (!billingCalendarMonths.length) return "";
+
+    if (billingCalendarView === "year") {
+      return String(billingCalendarMonths[0].year);
+    }
+
+    if (billingCalendarView === "three") {
+      const first = billingCalendarMonths[0];
+      const last = billingCalendarMonths[billingCalendarMonths.length - 1];
+      const firstLabel = new Date(first.year, first.month - 1, 1).toLocaleDateString("es-ES", {
+        month: "short",
+        year: first.year === last.year ? undefined : "numeric"
+      });
+      const lastLabel = new Date(last.year, last.month - 1, 1).toLocaleDateString("es-ES", {
+        month: "short",
+        year: "numeric"
+      });
+      return `${firstLabel} – ${lastLabel}`;
+    }
+
+    const month = billingCalendarMonths[0];
+    return new Date(month.year, month.month - 1, 1).toLocaleDateString("es-ES", {
+      month: "long",
+      year: "numeric"
+    });
+  }, [billingCalendarMonths, billingCalendarView]);
+
+  function changeBillingCalendarPeriod(offset: number) {
     const [year, month] = billingCalendarMonth.split("-").map(Number);
-    const target = new Date(year, month - 1 + offset, 1);
+    const monthStep = billingCalendarView === "year" ? 12 : 1;
+    const target = new Date(year, month - 1 + offset * monthStep, 1);
     setBillingCalendarMonth(
       `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}`
     );
@@ -1791,20 +1833,50 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                     if (e.target === e.currentTarget) setBillingCalendarOpen(false);
                   }}
                 >
-                  <section className="billing-modal" role="dialog" aria-modal="true" aria-labelledby="billing-calendar-title">
+                  <section
+                    className={`billing-modal calendar-view-${billingCalendarView}`}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="billing-calendar-title"
+                  >
                     <div className="billing-modal-head">
-                      <div>
+                      <div className="billing-modal-title">
                         <p className="eyebrow">Facturado</p>
-                        <h2 id="billing-calendar-title">
-                          {new Date(
-                            billingCalendarData.year,
-                            billingCalendarData.month - 1,
-                            1
-                          ).toLocaleDateString("es-ES", { month: "long", year: "numeric" })}
-                        </h2>
+                        <h2 id="billing-calendar-title">{billingCalendarTitle}</h2>
                       </div>
+
+                      <div className="calendar-view-switch" aria-label="Vista del calendario">
+                        <button
+                          className={billingCalendarView === "month" ? "active" : ""}
+                          onClick={() => {
+                            setBillingCalendarView("month");
+                            setSelectedBillingDay(null);
+                          }}
+                        >
+                          1 mes
+                        </button>
+                        <button
+                          className={billingCalendarView === "three" ? "active" : ""}
+                          onClick={() => {
+                            setBillingCalendarView("three");
+                            setSelectedBillingDay(null);
+                          }}
+                        >
+                          3 meses
+                        </button>
+                        <button
+                          className={billingCalendarView === "year" ? "active" : ""}
+                          onClick={() => {
+                            setBillingCalendarView("year");
+                            setSelectedBillingDay(null);
+                          }}
+                        >
+                          Año natural
+                        </button>
+                      </div>
+
                       <div className="billing-modal-actions">
-                        <button className="calendar-nav" onClick={() => changeBillingCalendarMonth(-1)} aria-label="Mes anterior">←</button>
+                        <button className="calendar-nav" onClick={() => changeBillingCalendarPeriod(-1)} aria-label="Periodo anterior">←</button>
                         <button
                           className="calendar-today"
                           onClick={() => {
@@ -1812,129 +1884,155 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                             setSelectedBillingDay(null);
                           }}
                         >
-                          Mes actual
+                          Actual
                         </button>
-                        <button className="calendar-nav" onClick={() => changeBillingCalendarMonth(1)} aria-label="Mes siguiente">→</button>
+                        <button className="calendar-nav" onClick={() => changeBillingCalendarPeriod(1)} aria-label="Periodo siguiente">→</button>
                         <button className="calendar-close" onClick={() => setBillingCalendarOpen(false)} aria-label="Cerrar">×</button>
                       </div>
                     </div>
 
                     <div className="billing-modal-summary">
                       <article>
-                        <span>Facturado mes</span>
-                        <strong>{billingVisible ? currency(billingCalendarData.total) : "•••••• €"}</strong>
-                        <small>{billingCalendarData.invoices.length} {billingCalendarData.invoices.length === 1 ? "factura" : "facturas"}</small>
+                        <span>
+                          {billingCalendarView === "month"
+                            ? "Facturado mes"
+                            : billingCalendarView === "three"
+                              ? "Facturado 3 meses"
+                              : "Facturado año"}
+                        </span>
+                        <strong>{billingVisible ? currency(billingCalendarViewData.total) : "•••••• €"}</strong>
+                        <small>{billingCalendarViewData.invoices} {billingCalendarViewData.invoices === 1 ? "factura" : "facturas"}</small>
                       </article>
                       <article className="summary-collected">
                         <span>Cobrado</span>
-                        <strong>{billingVisible ? currency(billingCalendarData.collected) : "•••• €"}</strong>
+                        <strong>{billingVisible ? currency(billingCalendarViewData.collected) : "•••• €"}</strong>
                         <small>
-                          {billingCalendarData.total > 0
-                            ? Math.round((billingCalendarData.collected / billingCalendarData.total) * 100)
+                          {billingCalendarViewData.total > 0
+                            ? Math.round((billingCalendarViewData.collected / billingCalendarViewData.total) * 100)
                             : 0}%
                         </small>
                       </article>
                       <article className="summary-receivable">
                         <span>Por cobrar</span>
-                        <strong>{billingVisible ? currency(billingCalendarData.receivable) : "•••• €"}</strong>
+                        <strong>{billingVisible ? currency(billingCalendarViewData.receivable) : "•••• €"}</strong>
                         <small>
-                          {billingCalendarData.total > 0
-                            ? Math.round((billingCalendarData.receivable / billingCalendarData.total) * 100)
+                          {billingCalendarViewData.total > 0
+                            ? Math.round((billingCalendarViewData.receivable / billingCalendarViewData.total) * 100)
                             : 0}%
                         </small>
                       </article>
                       <article className="summary-drafts">
                         <span>Borradores</span>
-                        <strong>{billingVisible ? currency(billingCalendarData.drafts) : "•••• €"}</strong>
+                        <strong>{billingVisible ? currency(billingCalendarViewData.drafts) : "•••• €"}</strong>
                         <small>
-                          {billingCalendarData.total > 0
-                            ? Math.round((billingCalendarData.drafts / billingCalendarData.total) * 100)
+                          {billingCalendarViewData.total > 0
+                            ? Math.round((billingCalendarViewData.drafts / billingCalendarViewData.total) * 100)
                             : 0}%
                         </small>
                       </article>
                     </div>
 
-                    <div className="billing-cumulative">
-                      <div className="billing-cumulative-head">
-                        <div>
-                          <span>Acumulado mensual</span>
-                          <strong>{billingVisible ? currency(billingCalendarData.total) : "•••••• €"}</strong>
+                    {billingCalendarView === "month" && primaryBillingMonth && (
+                      <div className="billing-cumulative">
+                        <div className="billing-cumulative-head">
+                          <div>
+                            <span>Acumulado mensual</span>
+                            <strong>{billingVisible ? currency(primaryBillingMonth.total) : "•••••• €"}</strong>
+                          </div>
+                          <small>Operación en normales · emisión en mensuales</small>
                         </div>
-                        <small>Normales: fecha de operación · Mensuales: fecha de emisión</small>
+                        <svg viewBox="0 0 100 32" preserveAspectRatio="none" aria-label="Evolución acumulada del mes">
+                          <line x1="0" y1="30" x2="100" y2="30" className="billing-chart-axis" />
+                          {primaryBillingMonth.chartPoints && (
+                            <polyline points={primaryBillingMonth.chartPoints} className="billing-chart-line" />
+                          )}
+                        </svg>
+                        <div className="billing-chart-labels">
+                          <span>1</span>
+                          <span>{Math.ceil(primaryBillingMonth.daysInMonth / 2)}</span>
+                          <span>{primaryBillingMonth.daysInMonth}</span>
+                        </div>
                       </div>
-                      <svg viewBox="0 0 100 42" preserveAspectRatio="none" aria-label="Evolución acumulada del mes">
-                        <line x1="0" y1="38" x2="100" y2="38" className="billing-chart-axis" />
-                        {billingCalendarData.chartPoints && (
-                          <polyline points={billingCalendarData.chartPoints} className="billing-chart-line" />
-                        )}
-                      </svg>
-                      <div className="billing-chart-labels">
-                        <span>1</span>
-                        <span>{Math.ceil(billingCalendarData.daysInMonth / 2)}</span>
-                        <span>{billingCalendarData.daysInMonth}</span>
-                      </div>
-                    </div>
+                    )}
 
-                    <div className="billing-calendar-shell">
-                      <div className="billing-calendar-weekdays">
-                        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}
-                      </div>
-                      <div className="billing-calendar-grid">
-                        {Array.from({ length: billingCalendarData.firstWeekday }, (_, index) => (
-                          <div className="billing-calendar-empty" key={`empty-${index}`} />
-                        ))}
-                        {Array.from({ length: billingCalendarData.daysInMonth }, (_, index) => {
-                          const day = index + 1;
-                          const date = `${billingCalendarMonth}-${String(day).padStart(2, "0")}`;
-                          const data = billingCalendarData.byDay.get(date);
-                          const isToday = date === dateISO();
-                          const isSelected = selectedBillingDay === date;
-                          return (
-                            <button
-                              key={date}
-                              className={`billing-day ${data ? "has-billing" : ""} ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}`}
-                              onClick={() => setSelectedBillingDay(isSelected ? null : date)}
-                            >
-                              <span className="billing-day-number">{day}</span>
-                              {data ? (
-                                <>
-                                  {data.total > 0 ? (
-                                    <strong>{billingVisible ? currency(data.total) : "•••• €"}</strong>
-                                  ) : (
-                                    <strong className="operation-only-amount">
-                                      {billingVisible ? currency(data.operationTotal) : "•••• €"}
-                                    </strong>
-                                  )}
-                                  <small>
-                                    {data.invoices.length > 0
-                                      ? `${data.invoices.length} ${data.invoices.length === 1 ? "fact." : "facts."}`
-                                      : "Sin factura ese día"}
-                                  </small>
-                                  {data.operations.length > 0 && (
-                                    <small className="billing-operation-note">
-                                      {data.operations.length} ${data.operations.length === 1 ? "operación" : "operaciones"}
-                                      {billingVisible ? ` · ${currency(data.operationTotal)}` : ""}
-                                    </small>
-                                  )}
-                                </>
-                              ) : (
-                                <small className="billing-day-zero">—</small>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
+                    <div className={`billing-calendar-collection ${billingCalendarView}`}>
+                      {billingCalendarMonths.map((monthData) => (
+                        <section className="billing-calendar-month" key={monthData.key}>
+                          <div className="billing-calendar-month-title">
+                            <strong>
+                              {new Date(monthData.year, monthData.month - 1, 1).toLocaleDateString("es-ES", {
+                                month: "long",
+                                year: billingCalendarView === "year" ? undefined : "numeric"
+                              })}
+                            </strong>
+                            <span>{billingVisible ? currency(monthData.total) : "•••• €"}</span>
+                          </div>
+
+                          <div className="billing-calendar-shell">
+                            <div className="billing-calendar-weekdays">
+                              {["L", "M", "X", "J", "V", "S", "D"].map((day) => <span key={day}>{day}</span>)}
+                            </div>
+                            <div className="billing-calendar-grid">
+                              {Array.from({ length: monthData.firstWeekday }, (_, index) => (
+                                <div className="billing-calendar-empty" key={`${monthData.key}-empty-${index}`} />
+                              ))}
+                              {Array.from({ length: monthData.daysInMonth }, (_, index) => {
+                                const day = index + 1;
+                                const date = `${monthData.key}-${String(day).padStart(2, "0")}`;
+                                const data = monthData.byDay.get(date);
+                                const isToday = date === dateISO();
+                                const isSelected = selectedBillingDay === date;
+                                const amount = data ? (data.total > 0 ? data.total : data.operationTotal) : 0;
+                                return (
+                                  <button
+                                    key={date}
+                                    className={`billing-day ${data ? "has-billing" : ""} ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}`}
+                                    onClick={() => setSelectedBillingDay(isSelected ? null : date)}
+                                  >
+                                    <span className="billing-day-number">{day}</span>
+                                    {data ? (
+                                      billingCalendarView === "month" ? (
+                                        <>
+                                          <strong className={data.total > 0 ? "" : "operation-only-amount"}>
+                                            {billingVisible ? currency(amount) : "•••• €"}
+                                          </strong>
+                                          <small>
+                                            {data.invoices.length > 0
+                                              ? `${data.invoices.length} ${data.invoices.length === 1 ? "fact." : "facts."}`
+                                              : "Operación"}
+                                          </small>
+                                          {data.operations.length > 0 && (
+                                            <small className="billing-operation-note">
+                                              {data.operations.length} {data.operations.length === 1 ? "op." : "ops."}
+                                            </small>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <strong className={data.total > 0 ? "mini-amount" : "mini-amount operation-only-amount"}>
+                                          {billingVisible ? `${Math.round(amount)}€` : "••"}
+                                        </strong>
+                                      )
+                                    ) : null}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </section>
+                      ))}
                     </div>
 
                     {selectedBillingDay && (
                       <div className="billing-day-detail">
+                        <button className="billing-detail-close" onClick={() => setSelectedBillingDay(null)} aria-label="Cerrar detalle">×</button>
                         <div className="section-title">
                           <div>
                             <h3>
                               {new Date(`${selectedBillingDay}T12:00:00`).toLocaleDateString("es-ES", {
                                 weekday: "long",
                                 day: "numeric",
-                                month: "long"
+                                month: "long",
+                                year: "numeric"
                               })}
                             </h3>
                             <p className="muted">
@@ -1991,33 +2089,11 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                         )}
                       </div>
                     )}
-
-                    <div className="billing-modal-history">
-                      <span>Meses recientes</span>
-                      <div>
-                        {monthlyBillingHistory.slice(0, 8).map((item) => {
-                          const key = `${item.year}-${String(item.month).padStart(2, "0")}`;
-                          return (
-                            <button
-                              key={key}
-                              className={billingCalendarMonth === key ? "active" : ""}
-                              onClick={() => {
-                                setBillingCalendarMonth(key);
-                                setSelectedBillingDay(null);
-                              }}
-                            >
-                              <span>{new Date(item.year, item.month - 1, 1).toLocaleDateString("es-ES", { month: "short" })}</span>
-                              <strong>{billingVisible ? currency(item.total) : "•••• €"}</strong>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </section>
                 </div>
               )}
 
-              <div className="panel table-panel">
+                            <div className="panel table-panel">
                 {invoices.length === 0 ? (
                   <div className="empty-state">
                     <div>⌁</div>
@@ -2027,7 +2103,17 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                   </div>
                 ) : (
                   <div className="table-scroll">
-                    <table className="data-table">
+                    <table className="data-table invoice-list-table">
+                      <colgroup>
+                        <col className="col-number" />
+                        <col className="col-date" />
+                        <col className="col-date" />
+                        <col className="col-client" />
+                        <col className="col-status" />
+                        <col className="col-total" />
+                        <col className="col-notes" />
+                        <col className="col-actions" />
+                      </colgroup>
                       <thead>
                         <tr className="sortable-head">
                           <th><button onClick={() => toggleInvoiceSort("number")}>Número <span>{sortMark("number")}</span></button></th>
