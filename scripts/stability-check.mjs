@@ -71,3 +71,9 @@ assert(styles.includes(".billing-calendar-collection.year"), "El calendario anua
 assert(styles.includes("overflow: hidden") && styles.includes(".billing-modal"), "El modal de Facturado debe evitar desplazamiento interno innecesario.");
 
 console.log("Stability checks OK");
+
+assert(app.includes('type BillingCompareMode = "month" | "year" | "range"'), "El calendario debe permitir comparar meses, años y franjas de fecha.");
+assert(app.includes("Comparar periodos"), "El calendario debe incluir el panel comparador.");
+assert(app.includes("billingCompareRangeA") && app.includes("billingCompareRangeB"), "El comparador debe admitir dos franjas de fechas.");
+assert(app.includes("Cambio B vs A"), "El comparador debe mostrar la diferencia entre periodos.");
+assert(css.includes(".billing-compare-panel"), "El comparador debe tener estilos propios y responsive.");
