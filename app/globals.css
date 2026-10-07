@@ -1835,3 +1835,135 @@ h3 { margin-bottom: 8px; }
   font-size: 8px !important;
   font-weight: 750;
 }
+
+
+/* Previsualización PDF */
+.pdf-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(15, 23, 42, .55);
+  backdrop-filter: blur(8px);
+}
+
+.pdf-preview-modal {
+  width: min(1120px, 100%);
+  height: min(92vh, 980px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.5);
+  border-radius: 20px;
+  background: #eef1f5;
+  box-shadow: 0 30px 90px rgba(15, 23, 42, .3);
+}
+
+.pdf-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: white;
+}
+
+.pdf-preview-head h2 {
+  margin: 2px 0 0;
+  font-size: 17px;
+}
+
+.pdf-preview-head > div:first-child > span {
+  display: block;
+  max-width: 520px;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.pdf-preview-actions .button {
+  text-decoration: none;
+}
+
+.pdf-preview-close {
+  width: 34px;
+  height: 34px;
+  margin-left: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  color: var(--text);
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pdf-preview-frame-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+}
+
+.pdf-preview-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: white;
+}
+
+@media (max-width: 760px) {
+  .pdf-preview-backdrop {
+    padding: 0;
+    align-items: end;
+  }
+
+  .pdf-preview-modal {
+    width: 100%;
+    height: 94vh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .pdf-preview-head {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .pdf-preview-head > div:first-child > span {
+    max-width: 42vw;
+  }
+
+  .pdf-preview-actions {
+    gap: 5px;
+  }
+
+  .pdf-preview-actions .button.secondary {
+    display: none;
+  }
+
+  .pdf-preview-actions .button {
+    padding: 9px 10px;
+    font-size: 9px;
+  }
+
+  .pdf-preview-close {
+    width: 32px;
+    height: 32px;
+  }
+
+  .pdf-preview-frame-wrap {
+    padding: 8px;
+  }
+}
