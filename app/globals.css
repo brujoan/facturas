@@ -3431,14 +3431,54 @@ h3 { margin-bottom: 8px; }
   }
 
   .billing-comparison-table {
-    overflow-x: auto;
+    overflow: visible;
+    border: 0;
+  }
+
+  .comparison-head-row {
+    display: none;
   }
 
   .comparison-row {
-    min-width: 540px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    margin-bottom: 7px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .comparison-row:last-child {
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .comparison-row > * {
-    font-size: 10px;
+    padding: 7px 9px;
+    font-size: 11px;
+    text-align: left;
   }
+
+  .comparison-row > strong:first-child {
+    grid-column: 1 / -1;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #edf0f3;
+    background: #fafbfc;
+    font-size: 11px;
+  }
+
+  .comparison-row > span::before {
+    display: block;
+    margin-bottom: 2px;
+    color: #8b95a3;
+    font-size: 8px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+
+  .comparison-row > span:nth-child(2)::before { content: "A"; }
+  .comparison-row > span:nth-child(3)::before { content: "B"; }
+  .comparison-row > span:nth-child(4)::before { content: "Diferencia"; }
+  .comparison-row > span:nth-child(5)::before { content: "%"; }
 }
