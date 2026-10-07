@@ -34,5 +34,9 @@ assert(invoicePdf.includes("issueDate.split(\"-\").join(\"_\")"), "El nombre del
 assert(app.includes("billingCalendarOpen"), "Facturado debe abrir el calendario visual mensual.");
 assert(app.includes("billingCalendarData"), "El calendario debe agrupar la facturación por día.");
 assert(app.includes("Acumulado mensual"), "La vista de Facturado debe mostrar acumulado mensual.");
+assert(app.includes("invoiceCalendarDate"), "El calendario debe usar una fecha de referencia específica por tipo de factura.");
+assert(app.includes('invoice.invoiceMode || "normal") === "monthly"'), "Las facturas mensuales deben identificarse para usar fecha de emisión.");
+assert(app.includes("line.serviceDate?.startsWith"), "Los conceptos mensuales con fecha de operación deben aparecer en el calendario.");
+assert(app.includes("operationTotal"), "Las operaciones mensuales deben mostrarse sin duplicar el total facturado.");
 
 console.log("Stability checks OK");
