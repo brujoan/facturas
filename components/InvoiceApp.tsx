@@ -310,6 +310,12 @@ function invoiceCountsAsIssued(invoice: Invoice) {
   return invoice.status === "Emitida" || invoice.status === "Cobrada";
 }
 
+function invoiceCalendarDate(invoice: Invoice) {
+  return (invoice.invoiceMode || "normal") === "monthly"
+    ? invoice.issueDate
+    : (invoice.operationDate || invoice.issueDate);
+}
+
 function nextNumber(series: string, invoices: Invoice[]) {
   const prefix = series.trim() || String(new Date().getFullYear());
   const used = invoices
@@ -891,15 +897,55 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     const [year, month] = billingCalendarMonth.split("-").map(Number);
     const daysInMonth = new Date(year, month, 0).getDate();
     const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
-    const byDay = new Map<string, { invoices: Invoice[]; total: number; collected: number; receivable: number }>();
+
+    type CalendarOperation = {
+      invoiceId: string;
+      invoiceNumber: string;
+      clientId: string;
+      lineId: string;
+      description: string;
+      value: number;
+      status: Status;
+    };
+
+    type CalendarDay = {
+      invoices: Invoice[];
+      total: number;
+      collected: number;
+      receivable: number;
+      operations: CalendarOperation[];
+      operationTotal: number;
+    };
+
+    const byDay = new Map<string, CalendarDay>();
+
+    function dayEntry(date: string) {
+      const existing = byDay.get(date);
+      if (existing) return existing;
+
+      const created: CalendarDay = {
+        invoices: [],
+        total: 0,
+        collected: 0,
+        receivable: 0,
+        operations: [],
+        operationTotal: 0
+      };
+      byDay.set(date, created);
+      return created;
+    }
 
     const monthInvoices = invoices
-      .filter(
-        (invoice) =>
-          invoiceCountsAsIssued(invoice) &&
-          invoice.issueDate?.startsWith(`${billingCalendarMonth}-`)
-      )
-      .sort((a, b) => a.issueDate.localeCompare(b.issueDate) || a.createdAt.localeCompare(b.createdAt));
+      .filter((invoice) => {
+        if (!invoiceCountsAsIssued(invoice)) return false;
+        const referenceDate = invoiceCalendarDate(invoice);
+        return referenceDate?.startsWith(`${billingCalendarMonth}-`);
+      })
+      .sort((a, b) => {
+        const dateA = invoiceCalendarDate(a);
+        const dateB = invoiceCalendarDate(b);
+        return dateA.localeCompare(dateB) || a.createdAt.localeCompare(b.createdAt);
+      });
 
     let total = 0;
     let collected = 0;
@@ -908,21 +954,44 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     for (const invoice of monthInvoices) {
       const t = totals(invoice);
       const value = money(t.base + t.vat - t.withholding);
+      const referenceDate = invoiceCalendarDate(invoice);
+
       total = money(total + value);
       if (invoice.status === "Cobrada") collected = money(collected + value);
       if (invoice.status === "Emitida") receivable = money(receivable + value);
 
-      const current = byDay.get(invoice.issueDate) || {
-        invoices: [],
-        total: 0,
-        collected: 0,
-        receivable: 0
-      };
+      const current = dayEntry(referenceDate);
       current.invoices.push(invoice);
       current.total = money(current.total + value);
       if (invoice.status === "Cobrada") current.collected = money(current.collected + value);
       if (invoice.status === "Emitida") current.receivable = money(current.receivable + value);
-      byDay.set(invoice.issueDate, current);
+    }
+
+    for (const invoice of invoices) {
+      if (!invoiceCountsAsIssued(invoice) || (invoice.invoiceMode || "normal") !== "monthly") continue;
+
+      for (const line of invoice.lines) {
+        if (!line.serviceDate?.startsWith(`${billingCalendarMonth}-`)) continue;
+
+        const base = lineBase(line);
+        const value = money(
+          base +
+          base * (Number(line.vat || 0) / 100) -
+          base * (Number(line.withholding || 0) / 100)
+        );
+
+        const current = dayEntry(line.serviceDate);
+        current.operations.push({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.number,
+          clientId: invoice.clientId,
+          lineId: line.id,
+          description: line.description,
+          value,
+          status: invoice.status
+        });
+        current.operationTotal = money(current.operationTotal + value);
+      }
     }
 
     let running = 0;
@@ -1706,7 +1775,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                           <span>Acumulado mensual</span>
                           <strong>{billingVisible ? currency(billingCalendarData.total) : "•••••• €"}</strong>
                         </div>
-                        <small>Por fecha de emisión</small>
+                        <small>Normales: fecha de operación · Mensuales: fecha de emisión</small>
                       </div>
                       <svg viewBox="0 0 100 42" preserveAspectRatio="none" aria-label="Evolución acumulada del mes">
                         <line x1="0" y1="38" x2="100" y2="38" className="billing-chart-axis" />
@@ -1744,8 +1813,24 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                               <span className="billing-day-number">{day}</span>
                               {data ? (
                                 <>
-                                  <strong>{billingVisible ? currency(data.total) : "•••• €"}</strong>
-                                  <small>{data.invoices.length} {data.invoices.length === 1 ? "fact." : "facts."}</small>
+                                  {data.total > 0 ? (
+                                    <strong>{billingVisible ? currency(data.total) : "•••• €"}</strong>
+                                  ) : (
+                                    <strong className="operation-only-amount">
+                                      {billingVisible ? currency(data.operationTotal) : "•••• €"}
+                                    </strong>
+                                  )}
+                                  <small>
+                                    {data.invoices.length > 0
+                                      ? `${data.invoices.length} ${data.invoices.length === 1 ? "fact." : "facts."}`
+                                      : "Sin factura ese día"}
+                                  </small>
+                                  {data.operations.length > 0 && (
+                                    <small className="billing-operation-note">
+                                      {data.operations.length} ${data.operations.length === 1 ? "operación" : "operaciones"}
+                                      {billingVisible ? ` · ${currency(data.operationTotal)}` : ""}
+                                    </small>
+                                  )}
                                 </>
                               ) : (
                                 <small className="billing-day-zero">—</small>
@@ -1769,8 +1854,15 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                             </h3>
                             <p className="muted">
                               {selectedBillingDayData
-                                ? `${selectedBillingDayData.invoices.length} ${selectedBillingDayData.invoices.length === 1 ? "factura" : "facturas"} · ${billingVisible ? currency(selectedBillingDayData.total) : "importe oculto"}`
-                                : "Sin facturación"}
+                                ? [
+                                    selectedBillingDayData.invoices.length
+                                      ? `${selectedBillingDayData.invoices.length} ${selectedBillingDayData.invoices.length === 1 ? "factura" : "facturas"} · ${billingVisible ? currency(selectedBillingDayData.total) : "importe oculto"}`
+                                      : null,
+                                    selectedBillingDayData.operations.length
+                                      ? `${selectedBillingDayData.operations.length} ${selectedBillingDayData.operations.length === 1 ? "operación mensual" : "operaciones mensuales"} · ${billingVisible ? currency(selectedBillingDayData.operationTotal) : "importe oculto"}`
+                                      : null
+                                  ].filter(Boolean).join(" · ")
+                                : "Sin facturación ni operaciones"}
                             </p>
                           </div>
                         </div>
@@ -1789,6 +1881,23 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                                   <div>
                                     <strong>{billingVisible ? currency(value) : "•••• €"}</strong>
                                     <span className={`status ${invoice.status.toLowerCase()}`}>{invoice.status}</span>
+                                  </div>
+                                </article>
+                              );
+                            })}
+                            {selectedBillingDayData.operations.map((operation) => {
+                              const client = clients.find((item) => item.id === operation.clientId);
+                              return (
+                                <article className="billing-operation-row" key={`${operation.invoiceId}-${operation.lineId}`}>
+                                  <div>
+                                    <strong>{operation.description || "Concepto mensual"}</strong>
+                                    <span>
+                                      Operación incluida en {operation.invoiceNumber || "factura mensual"} · {client?.name || "Cliente"}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <strong>{billingVisible ? currency(operation.value) : "•••• €"}</strong>
+                                    <span className="operation-badge">Operación</span>
                                   </div>
                                 </article>
                               );
