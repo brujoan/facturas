@@ -187,21 +187,32 @@ function rightText(page: PDFPage, text: string, y: number, font: PDFFont, size: 
 }
 
 function wrap(font: PDFFont, text: string, size: number, maxWidth: number) {
-  const words = pdfText(text).split(/\s+/).filter(Boolean);
+  const paragraphs = pdfText(text).replace(/\r\n?/g, "\n").split("\n");
   const rows: string[] = [];
-  let current = "";
 
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !current) {
-      current = candidate;
-    } else {
-      rows.push(current);
-      current = word;
+  for (const paragraph of paragraphs) {
+    const words = paragraph.trim().split(/[ \t]+/).filter(Boolean);
+
+    if (!words.length) {
+      rows.push("");
+      continue;
     }
+
+    let current = "";
+
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !current) {
+        current = candidate;
+      } else {
+        rows.push(current);
+        current = word;
+      }
+    }
+
+    if (current) rows.push(current);
   }
 
-  if (current) rows.push(current);
   return rows.length ? rows : [""];
 }
 
