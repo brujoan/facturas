@@ -53,6 +53,7 @@ assert(app.includes("pdfPreview"), "La app debe tener estado para previsualizar 
 assert(app.includes("buildInvoicePdf"), "La previsualización debe reutilizar el generador PDF real.");
 assert(app.includes("pdf-preview-frame"), "La previsualización debe mostrar el PDF dentro de la app.");
 assert(app.includes("Descargar PDF"), "La previsualización debe permitir descargar el PDF tras revisarlo.");
+assert(invoicePdf.includes('replace(/\\r\\n?/g, "\\n").split("\\n")'), "El PDF debe respetar saltos de línea explícitos en observaciones y textos multilínea.");
 assert(!app.includes("onClick={() => printInvoice(invoice)}"), "El botón PDF no debe descargar directamente sin previsualización.");
 
 console.log("Stability checks OK");
