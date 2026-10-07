@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import FiscalPanel from "@/components/FiscalPanel";
-import { downloadInvoicePdf } from "@/lib/invoicePdf";
+import { buildInvoicePdf } from "@/lib/invoicePdf";
 
 type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
@@ -387,7 +387,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [deletedConceptIds, setDeletedConceptIds] = useState<string[]>([]);
   const [draft, setDraft] = useState<Invoice>(() => emptyInvoice(defaultActivities[0]));
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Invoice | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string; number: string } | null>(null);
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
   const [clientDraft, setClientDraft] = useState<Client>({ ...blankClient });
   const [activityDraft, setActivityDraft] = useState({ name: "", vat: 21, withholding: 0 });
   const [notice, setNotice] = useState("");
@@ -395,6 +396,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("local");
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const skipNextSyncRef = useRef(false);
+  const pdfPreviewUrlRef = useRef("");
 
   function mainPayload() {
     return {
@@ -1473,15 +1475,25 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     setDeletedInvoiceIds((current) => current.includes(id) ? current : [...current, id]);
   }
 
-  async function printInvoice(invoice: Invoice) {
+  function closePdfPreview() {
+    if (pdfPreviewUrlRef.current) {
+      URL.revokeObjectURL(pdfPreviewUrlRef.current);
+      pdfPreviewUrlRef.current = "";
+    }
+    setPdfPreview(null);
+  }
+
+  async function previewInvoicePdf(invoice: Invoice) {
     const client = invoice.clientSnapshot || clients.find((item) => item.id === invoice.clientId);
     const invoiceIssuer = invoice.issuerSnapshot || issuer;
 
     if (!client) return flash("No se encuentran los datos del cliente para generar el PDF.");
     if (!invoice.number.trim()) return flash("La factura todavía no tiene numeración definitiva.");
 
+    setPdfPreviewLoading(true);
+
     try {
-      await downloadInvoicePdf({
+      const { bytes, filename } = await buildInvoicePdf({
         number: invoice.number,
         issueDate: invoice.issueDate,
         notes: invoice.notes || "",
@@ -1513,9 +1525,18 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
           withholding: Number(line.withholding || 0)
         }))
       });
+
+      if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
+
+      const pdfBuffer = new Uint8Array(bytes).buffer;
+      const url = URL.createObjectURL(new Blob([pdfBuffer], { type: "application/pdf" }));
+      pdfPreviewUrlRef.current = url;
+      setPdfPreview({ url, filename, number: invoice.number });
     } catch (error) {
       console.error(error);
-      flash("No se pudo generar el PDF de la factura.");
+      flash("No se pudo generar la previsualización del PDF.");
+    } finally {
+      setPdfPreviewLoading(false);
     }
   }
 
@@ -1593,15 +1614,33 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     window.location.href = "/login";
   }
 
+  useEffect(() => {
+    if (!pdfPreview) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closePdfPreview();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [pdfPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
+    };
+  }, []);
+
   if (!ready) {
     return <main className="loading">Cargando gestor…</main>;
   }
 
-  const printClient = preview
-    ? preview.clientSnapshot || clients.find((client) => client.id === preview.clientId)
-    : undefined;
-  const printIssuer = preview?.issuerSnapshot || issuer;
-  const printTotals = preview ? totals(preview) : null;
   const syncLabel =
     syncStatus === "sincronizado" ? "Sincronizado" :
     syncStatus === "sincronizando" ? "Guardando…" :
@@ -2094,9 +2133,9 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                               </td>
                               <td className="actions">
                                 <button
-                                  onClick={() => printInvoice(invoice)}
-                                  disabled={invoiceCountsAsIssued(invoice) && !invoice.number}
-                                  title={invoiceCountsAsIssued(invoice) && !invoice.number ? "Esperando numeración segura" : "Descargar PDF"}
+                                  onClick={() => void previewInvoicePdf(invoice)}
+                                  disabled={pdfPreviewLoading || (invoiceCountsAsIssued(invoice) && !invoice.number)}
+                                  title={invoiceCountsAsIssued(invoice) && !invoice.number ? "Esperando numeración segura" : "Previsualizar PDF"}
                                 >
                                   {invoiceCountsAsIssued(invoice) && !invoice.number ? "Numerando…" : "PDF"}
                                 </button>
@@ -2573,81 +2612,48 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         </main>
       </div>
 
-      <section id="print-sheet">
-        {preview && printClient && printTotals && (
-          <div className="invoice-paper">
-            <header className="invoice-print-header">
+      {pdfPreview && (
+        <div
+          className="pdf-preview-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closePdfPreview();
+          }}
+        >
+          <section className="pdf-preview-modal" role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title">
+            <header className="pdf-preview-head">
               <div>
-                <div className="print-brand">FACTURA</div>
-                <h1>{preview.number}</h1>
-                <p>Fecha de emisión: {preview.issueDate}</p>
-                {(preview.invoiceMode || "normal") === "monthly" ? (
-                  <p>Periodo facturado: {preview.periodFrom || "—"} a {preview.periodTo || "—"}</p>
-                ) : (
-                  preview.operationDate && <p>Fecha de operación: {preview.operationDate}</p>
-                )}
+                <p className="eyebrow">Previsualización PDF</p>
+                <h2 id="pdf-preview-title">Factura ${pdfPreview.number}</h2>
+                <span>{pdfPreview.filename}</span>
               </div>
-              <div className="issuer-print">
-                <strong>{printIssuer.fiscalName}</strong>
-                <span>{printIssuer.taxId}</span>
-                <span>{printIssuer.address}</span>
-                <span>{printIssuer.postalCode} {printIssuer.city} {printIssuer.province}</span>
-                <span>{printIssuer.email}</span>
+              <div className="pdf-preview-actions">
+                <a
+                  className="button secondary"
+                  href={pdfPreview.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Abrir aparte
+                </a>
+                <a className="button primary" href={pdfPreview.url} download={pdfPreview.filename}>
+                  Descargar PDF
+                </a>
+                <button className="pdf-preview-close" onClick={closePdfPreview} aria-label="Cerrar previsualización">×</button>
               </div>
             </header>
 
-            <div className="bill-to">
-              <span>FACTURAR A</span>
-              <strong>{printClient.name}</strong>
-              <p>{printClient.taxId}</p>
-              <p>{printClient.address}</p>
-              <p>{printClient.postalCode} {printClient.city} {printClient.province}</p>
+            <div className="pdf-preview-frame-wrap">
+              <iframe
+                className="pdf-preview-frame"
+                src={pdfPreview.url}
+                title={`Previsualización de factura ${pdfPreview.number}`}
+              />
             </div>
+          </section>
+        </div>
+      )}
 
-            <table className="print-table">
-              <thead>
-                <tr>
-                  {(preview.invoiceMode || "normal") === "monthly" && <th>Fecha</th>}
-                  <th>Concepto</th><th>Cant.</th><th>Precio</th><th>IVA</th><th>IRPF</th><th>Base</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.lines.map((line) => (
-                  <tr key={line.id}>
-                    {(preview.invoiceMode || "normal") === "monthly" && <td>{line.serviceDate || "—"}</td>}
-                    <td>{line.description}</td>
-                    <td>{line.quantity}</td>
-                    <td>{currency(line.unitPrice)}</td>
-                    <td>{line.vat}%</td>
-                    <td>{line.withholding}%</td>
-                    <td>{currency(lineBase(line))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="print-bottom">
-              <div className="payment-print">
-                <strong>Pago</strong>
-                <p>{preview.paymentMethod}</p>
-                {printIssuer.iban && <p>IBAN: {printIssuer.iban}</p>}
-                {preview.dueDate && <p>Vencimiento: {preview.dueDate}</p>}
-                {preview.notes && <><strong>Observaciones</strong><p>{preview.notes}</p></>}
-              </div>
-              <div className="print-totals">
-                <div><span>Base imponible</span><strong>{currency(printTotals.base)}</strong></div>
-                {groupTax(preview.lines, "vat").map(([rate, row]) => (
-                  <div key={`pv-${rate}`}><span>IVA {rate}% s/ {currency(row.base)}</span><strong>{currency(row.amount)}</strong></div>
-                ))}
-                {groupTax(preview.lines, "withholding").map(([rate, row]) => (
-                  <div key={`pr-${rate}`}><span>IRPF {rate}% s/ {currency(row.base)}</span><strong>− {currency(row.amount)}</strong></div>
-                ))}
-                <div className="grand-total"><span>TOTAL</span><strong>{currency(printTotals.base + printTotals.vat - printTotals.withholding)}</strong></div>
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
     </>
   );
 }
