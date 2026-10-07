@@ -8,7 +8,7 @@ type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
 type InvoiceMode = "normal" | "monthly";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
-type InvoiceSortKey = "number" | "date" | "client" | "status" | "total";
+type InvoiceSortKey = "number" | "date" | "collectionDate" | "client" | "status" | "total";
 type SortDirection = "asc" | "desc";
 type SyncStatus = "local" | "sincronizando" | "sincronizado" | "error" | "sesion";
 
@@ -79,7 +79,8 @@ type Invoice = {
   invoiceMode?: InvoiceMode;
   periodFrom?: string;
   periodTo?: string;
-  dueDate: string;
+  collectionDate?: string;
+  dueDate?: string;
   clientId: string;
   lines: InvoiceLine[];
   notes: string;
@@ -273,7 +274,7 @@ function emptyInvoice(activity?: ActivityPreset): Invoice {
     invoiceMode: "normal",
     periodFrom: "",
     periodTo: "",
-    dueDate: today,
+    collectionDate: "",
     clientId: "",
     lines: [emptyLine(activity)],
     notes: "",
@@ -371,6 +372,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     dateTo: "",
     clientId: "",
     status: "",
+    collectionDateFrom: "",
+    collectionDateTo: "",
     totalMin: "",
     totalMax: ""
   });
@@ -764,6 +767,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       if (invoiceFilters.dateTo && invoice.issueDate > invoiceFilters.dateTo) return false;
       if (invoiceFilters.clientId && invoice.clientId !== invoiceFilters.clientId) return false;
       if (invoiceFilters.status && invoice.status !== invoiceFilters.status) return false;
+      if (invoiceFilters.collectionDateFrom && (!invoice.collectionDate || invoice.collectionDate < invoiceFilters.collectionDateFrom)) return false;
+      if (invoiceFilters.collectionDateTo && (!invoice.collectionDate || invoice.collectionDate > invoiceFilters.collectionDateTo)) return false;
       if (minTotal !== null && Number.isFinite(minTotal) && invoiceTotal < minTotal) return false;
       if (maxTotal !== null && Number.isFinite(maxTotal) && invoiceTotal > maxTotal) return false;
 
@@ -785,6 +790,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       let comparison = 0;
       if (invoiceSort.key === "number") comparison = (a.number || "").localeCompare(b.number || "", "es", { numeric: true });
       if (invoiceSort.key === "date") comparison = a.issueDate.localeCompare(b.issueDate);
+      if (invoiceSort.key === "collectionDate") comparison = (a.collectionDate || "").localeCompare(b.collectionDate || "");
       if (invoiceSort.key === "client") comparison = clientA.localeCompare(clientB, "es");
       if (invoiceSort.key === "status") comparison = a.status.localeCompare(b.status, "es");
       if (invoiceSort.key === "total") comparison = totalA - totalB;
@@ -862,7 +868,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     setInvoiceSort((current) =>
       current.key === key
         ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { key, direction: key === "date" || key === "total" ? "desc" : "asc" }
+        : { key, direction: key === "date" || key === "collectionDate" || key === "total" ? "desc" : "asc" }
     );
   }
 
@@ -878,6 +884,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       dateTo: "",
       clientId: "",
       status: "",
+      collectionDateFrom: "",
+      collectionDateTo: "",
       totalMin: "",
       totalMax: ""
     });
@@ -1447,7 +1455,8 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       operationDate: today,
       periodFrom: (invoice.invoiceMode || "normal") === "monthly" ? range.first : "",
       periodTo: (invoice.invoiceMode || "normal") === "monthly" ? range.last : "",
-      dueDate: today,
+      collectionDate: "",
+      dueDate: undefined,
       status: "Borrador",
       issuerSnapshot: undefined,
       clientSnapshot: undefined,
@@ -2023,6 +2032,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                         <tr className="sortable-head">
                           <th><button onClick={() => toggleInvoiceSort("number")}>Número <span>{sortMark("number")}</span></button></th>
                           <th><button onClick={() => toggleInvoiceSort("date")}>Fecha <span>{sortMark("date")}</span></button></th>
+                          <th><button onClick={() => toggleInvoiceSort("collectionDate")}>Cobro <span>{sortMark("collectionDate")}</span></button></th>
                           <th><button onClick={() => toggleInvoiceSort("client")}>Cliente <span>{sortMark("client")}</span></button></th>
                           <th><button onClick={() => toggleInvoiceSort("status")}>Estado <span>{sortMark("status")}</span></button></th>
                           <th className="right"><button onClick={() => toggleInvoiceSort("total")}>Total <span>{sortMark("total")}</span></button></th>
@@ -2051,6 +2061,22 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                                 value={invoiceFilters.dateTo}
                                 onChange={(e) => setInvoiceFilters((current) => ({ ...current, dateTo: e.target.value }))}
                                 aria-label="Fecha hasta"
+                              />
+                            </div>
+                          </th>
+                          <th>
+                            <div className="date-filter">
+                              <input
+                                type="date"
+                                value={invoiceFilters.collectionDateFrom}
+                                onChange={(e) => setInvoiceFilters((current) => ({ ...current, collectionDateFrom: e.target.value }))}
+                                aria-label="Fecha de cobro desde"
+                              />
+                              <input
+                                type="date"
+                                value={invoiceFilters.collectionDateTo}
+                                onChange={(e) => setInvoiceFilters((current) => ({ ...current, collectionDateTo: e.target.value }))}
+                                aria-label="Fecha de cobro hasta"
                               />
                             </div>
                           </th>
@@ -2108,7 +2134,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                       <tbody>
                         {recentInvoices.length === 0 && (
                           <tr>
-                            <td colSpan={7} className="filtered-empty">
+                            <td colSpan={8} className="filtered-empty">
                               No hay facturas que coincidan con estos filtros.
                             </td>
                           </tr>
@@ -2120,9 +2146,12 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                             <tr key={invoice.id}>
                               <td><strong>{invoice.number || "Sin número"}</strong></td>
                               <td>{invoice.issueDate}</td>
+                              <td>{invoice.collectionDate || "—"}</td>
                               <td>{client?.name || "Cliente eliminado"}</td>
                               <td><span className={`status ${invoice.status.toLowerCase()}`}>{invoice.status}</span></td>
-                              <td className="right"><strong>{currency(t.base + t.vat - t.withholding)}</strong></td>
+                              <td className="right">
+                                <strong>{billingVisible ? currency(t.base + t.vat - t.withholding) : "•••• €"}</strong>
+                              </td>
                               <td className="invoice-observation-cell">
                                 <input
                                   value={invoice.internalNote || ""}
@@ -2220,8 +2249,12 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                           </label>
                         </>
                       )}
-                      <label>Vencimiento
-                        <input type="date" value={draft.dueDate} onChange={(e) => setDraft({ ...draft, dueDate: e.target.value })} />
+                      <label>Fecha de cobro
+                        <input
+                          type="date"
+                          value={draft.collectionDate || ""}
+                          onChange={(e) => setDraft({ ...draft, collectionDate: e.target.value })}
+                        />
                       </label>
                       <label>Estado
                         <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as Status })}>
