@@ -3044,3 +3044,401 @@ h3 { margin-bottom: 8px; }
     content: none;
   }
 }
+
+
+/* v0.11.0 · Comparador de facturación */
+.calendar-compare-toggle {
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  color: #475467;
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.calendar-compare-toggle:hover,
+.calendar-compare-toggle.active {
+  border-color: #b8c3d1;
+  background: #f7f9fc;
+  color: var(--text);
+}
+
+.billing-compare-layer {
+  position: absolute;
+  z-index: 40;
+  inset: 56px 0 0;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  background: rgba(247, 249, 252, .86);
+  backdrop-filter: blur(5px);
+}
+
+.billing-compare-panel {
+  width: min(820px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, .22);
+}
+
+.billing-compare-head {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding-right: 34px;
+}
+
+.billing-compare-head h3 {
+  margin: 2px 0 3px;
+  font-size: 20px;
+}
+
+.billing-compare-head .muted {
+  margin: 0;
+  font-size: 10px;
+}
+
+.billing-compare-head .billing-detail-close {
+  top: 0;
+  right: 0;
+}
+
+.billing-compare-mode {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #f2f4f7;
+}
+
+.billing-compare-mode button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.billing-compare-mode button.active {
+  background: white;
+  color: var(--text);
+  box-shadow: 0 1px 5px rgba(15, 23, 42, .09);
+}
+
+.billing-compare-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.billing-compare-fields label,
+.billing-compare-fields fieldset {
+  min-width: 0;
+}
+
+.billing-compare-fields > label,
+.billing-compare-fields fieldset label {
+  display: grid;
+  gap: 5px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.billing-compare-fields input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fafbfc;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.billing-compare-fields input:focus {
+  background: white;
+}
+
+.billing-compare-fields fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+
+.billing-compare-fields legend {
+  padding: 0 5px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.billing-compare-swap {
+  width: 40px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f7f9fc;
+  color: #475467;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.billing-compare-swap:hover {
+  background: #eef2f6;
+  color: var(--text);
+}
+
+.billing-comparison-results {
+  display: grid;
+  gap: 12px;
+}
+
+.billing-comparison-periods {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, .7fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.billing-comparison-periods article {
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.billing-comparison-periods span,
+.billing-comparison-periods strong,
+.billing-comparison-periods b,
+.billing-comparison-periods small {
+  display: block;
+}
+
+.billing-comparison-periods span {
+  color: #8b95a3;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.billing-comparison-periods strong {
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.billing-comparison-periods b {
+  margin-top: 9px;
+  font-size: 18px;
+}
+
+.billing-comparison-periods small {
+  margin-top: 3px;
+  color: #8b95a3;
+  font-size: 9px;
+}
+
+.billing-comparison-periods .comparison-change-card {
+  background: #f7faff;
+  text-align: center;
+}
+
+.billing-comparison-periods .comparison-change-card strong {
+  margin-top: 10px;
+  font-size: 18px;
+}
+
+.billing-comparison-periods .comparison-change-card small {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.billing-comparison-table {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.25fr) repeat(4, minmax(82px, 1fr));
+  align-items: center;
+  min-height: 38px;
+  border-bottom: 1px solid #edf0f3;
+}
+
+.comparison-row:last-child {
+  border-bottom: 0;
+}
+
+.comparison-row > * {
+  min-width: 0;
+  padding: 7px 9px;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.comparison-row > *:first-child {
+  text-align: left;
+}
+
+.comparison-head-row {
+  min-height: 32px;
+  background: #fafbfc;
+  color: #7c8796;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .035em;
+}
+
+.comparison-head-row > * {
+  font-size: 8px;
+}
+
+.comparison-row .positive {
+  color: #067647;
+  font-weight: 800;
+}
+
+.comparison-row .negative {
+  color: #b42318;
+  font-weight: 800;
+}
+
+.billing-comparison-periods .positive {
+  color: #067647;
+}
+
+.billing-comparison-periods .negative {
+  color: #b42318;
+}
+
+.billing-comparison-empty {
+  margin: 0;
+  padding: 22px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .calendar-compare-toggle {
+    height: 25px;
+    padding: 0 7px;
+    font-size: 8.5px;
+  }
+
+  .billing-compare-layer {
+    inset: 44px 0 0;
+    padding: 6px;
+  }
+
+  .billing-compare-panel {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .billing-compare-head {
+    margin-bottom: 10px;
+  }
+
+  .billing-compare-head h3 {
+    font-size: 16px;
+  }
+
+  .billing-compare-head .muted {
+    font-size: 9px;
+  }
+
+  .billing-compare-mode {
+    margin-bottom: 10px;
+  }
+
+  .billing-compare-mode button {
+    min-height: 32px;
+    padding: 5px 4px;
+    font-size: 9px;
+  }
+
+  .billing-compare-fields,
+  .billing-compare-fields.range {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 7px;
+  }
+
+  .billing-compare-swap {
+    width: 100%;
+    height: 30px;
+  }
+
+  .billing-compare-fields fieldset {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .billing-compare-fields input {
+    height: 36px;
+    font-size: 12px;
+  }
+
+  .billing-comparison-periods {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .billing-comparison-periods .comparison-change-card {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .billing-comparison-periods b,
+  .billing-comparison-periods .comparison-change-card strong {
+    font-size: 15px;
+  }
+
+  .billing-comparison-table {
+    overflow-x: auto;
+  }
+
+  .comparison-row {
+    min-width: 540px;
+  }
+
+  .comparison-row > * {
+    font-size: 10px;
+  }
+}
