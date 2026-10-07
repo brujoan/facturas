@@ -7,6 +7,7 @@ import { buildInvoicePdf } from "@/lib/invoicePdf";
 type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
 type BillingCalendarView = "month" | "three" | "year";
+type BillingCompareMode = "month" | "year" | "range";
 type InvoiceMode = "normal" | "monthly";
 type Status = "Borrador" | "Emitida" | "Cobrada" | "Anulada";
 type InvoiceSortKey = "number" | "date" | "collectionDate" | "client" | "status" | "total";
@@ -245,6 +246,12 @@ function monthRange(date: string) {
   return { first, last };
 }
 
+function offsetMonthKey(value: string, offset: number) {
+  const [year, month] = value.split("-").map(Number);
+  const target = new Date(year, month - 1 + offset, 1);
+  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function money(value: number) {
   return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 }
@@ -363,6 +370,21 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [billingCalendarOpen, setBillingCalendarOpen] = useState(false);
   const [billingCalendarMonth, setBillingCalendarMonth] = useState(() => dateISO().slice(0, 7));
   const [billingCalendarView, setBillingCalendarView] = useState<BillingCalendarView>("month");
+  const [billingCompareOpen, setBillingCompareOpen] = useState(false);
+  const [billingCompareMode, setBillingCompareMode] = useState<BillingCompareMode>("month");
+  const [billingCompareMonthA, setBillingCompareMonthA] = useState(() => offsetMonthKey(dateISO().slice(0, 7), -1));
+  const [billingCompareMonthB, setBillingCompareMonthB] = useState(() => dateISO().slice(0, 7));
+  const [billingCompareYearA, setBillingCompareYearA] = useState(() => String(Number(dateISO().slice(0, 4)) - 1));
+  const [billingCompareYearB, setBillingCompareYearB] = useState(() => dateISO().slice(0, 4));
+  const [billingCompareRangeA, setBillingCompareRangeA] = useState(() => {
+    const previous = offsetMonthKey(dateISO().slice(0, 7), -1);
+    const range = monthRange(`${previous}-01`);
+    return { from: range.first, to: range.last };
+  });
+  const [billingCompareRangeB, setBillingCompareRangeB] = useState(() => {
+    const range = monthRange(dateISO());
+    return { from: range.first, to: range.last };
+  });
   const [selectedBillingDay, setSelectedBillingDay] = useState<string | null>(null);
   const [invoiceSort, setInvoiceSort] = useState<{ key: InvoiceSortKey; direction: SortDirection }>({
     key: "date",
@@ -1063,6 +1085,128 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     );
   }, [billingCalendarMonths]);
 
+  const billingComparison = useMemo(() => {
+    type ComparisonSummary = {
+      total: number;
+      collected: number;
+      receivable: number;
+      drafts: number;
+      invoices: number;
+    };
+
+    function normalizeRange(from: string, to: string) {
+      if (!from || !to) return null;
+      return from <= to ? { from, to } : { from: to, to: from };
+    }
+
+    function periodFor(side: "A" | "B") {
+      if (billingCompareMode === "month") {
+        const key = side === "A" ? billingCompareMonthA : billingCompareMonthB;
+        if (!key) return null;
+        const range = monthRange(`${key}-01`);
+        const label = new Date(`${key}-01T12:00:00`).toLocaleDateString("es-ES", {
+          month: "long",
+          year: "numeric"
+        });
+        return { from: range.first, to: range.last, label };
+      }
+
+      if (billingCompareMode === "year") {
+        const year = side === "A" ? billingCompareYearA : billingCompareYearB;
+        if (!/^\d{4}$/.test(year)) return null;
+        return {
+          from: `${year}-01-01`,
+          to: `${year}-12-31`,
+          label: year
+        };
+      }
+
+      const value = side === "A" ? billingCompareRangeA : billingCompareRangeB;
+      const range = normalizeRange(value.from, value.to);
+      if (!range) return null;
+
+      const formatter = new Intl.DateTimeFormat("es-ES", {
+        day: "numeric",
+        month: "short",
+        year: "numeric"
+      });
+      return {
+        ...range,
+        label: `${formatter.format(new Date(`${range.from}T12:00:00`))} – ${formatter.format(new Date(`${range.to}T12:00:00`))}`
+      };
+    }
+
+    function summarize(from: string, to: string): ComparisonSummary {
+      const result: ComparisonSummary = {
+        total: 0,
+        collected: 0,
+        receivable: 0,
+        drafts: 0,
+        invoices: 0
+      };
+
+      for (const invoice of invoices) {
+        if (!invoiceCountsForBilling(invoice)) continue;
+        const referenceDate = invoiceCalendarDate(invoice);
+        if (!referenceDate || referenceDate < from || referenceDate > to) continue;
+
+        const t = totals(invoice);
+        const value = money(t.base + t.vat - t.withholding);
+        result.total = money(result.total + value);
+        result.invoices += 1;
+        if (invoice.status === "Cobrada") result.collected = money(result.collected + value);
+        if (invoice.status === "Emitida") result.receivable = money(result.receivable + value);
+        if (invoice.status === "Borrador") result.drafts = money(result.drafts + value);
+      }
+
+      return result;
+    }
+
+    function deltaPercent(previous: number, next: number) {
+      if (previous === 0) return next === 0 ? 0 : null;
+      return ((next - previous) / Math.abs(previous)) * 100;
+    }
+
+    const periodA = periodFor("A");
+    const periodB = periodFor("B");
+    if (!periodA || !periodB) return null;
+
+    const a = summarize(periodA.from, periodA.to);
+    const b = summarize(periodB.from, periodB.to);
+
+    const delta = {
+      total: money(b.total - a.total),
+      collected: money(b.collected - a.collected),
+      receivable: money(b.receivable - a.receivable),
+      drafts: money(b.drafts - a.drafts),
+      invoices: b.invoices - a.invoices
+    };
+
+    return {
+      periodA,
+      periodB,
+      a,
+      b,
+      delta,
+      percent: {
+        total: deltaPercent(a.total, b.total),
+        collected: deltaPercent(a.collected, b.collected),
+        receivable: deltaPercent(a.receivable, b.receivable),
+        drafts: deltaPercent(a.drafts, b.drafts),
+        invoices: deltaPercent(a.invoices, b.invoices)
+      }
+    };
+  }, [
+    invoices,
+    billingCompareMode,
+    billingCompareMonthA,
+    billingCompareMonthB,
+    billingCompareYearA,
+    billingCompareYearB,
+    billingCompareRangeA,
+    billingCompareRangeB
+  ]);
+
   const primaryBillingMonth =
     billingCalendarMonths.find((month) => month.key === billingCalendarMonth) ||
     billingCalendarMonths[0];
@@ -1116,7 +1260,39 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       setBillingCalendarMonth(dateISO().slice(0, 7));
     }
     setSelectedBillingDay(null);
+    setBillingCompareOpen(false);
     setBillingCalendarOpen(true);
+  }
+
+  function swapBillingComparisonPeriods() {
+    if (billingCompareMode === "month") {
+      const a = billingCompareMonthA;
+      setBillingCompareMonthA(billingCompareMonthB);
+      setBillingCompareMonthB(a);
+      return;
+    }
+
+    if (billingCompareMode === "year") {
+      const a = billingCompareYearA;
+      setBillingCompareYearA(billingCompareYearB);
+      setBillingCompareYearB(a);
+      return;
+    }
+
+    const a = billingCompareRangeA;
+    setBillingCompareRangeA(billingCompareRangeB);
+    setBillingCompareRangeB(a);
+  }
+
+  function formatComparisonDelta(value: number, kind: "money" | "count") {
+    const sign = value > 0 ? "+" : "";
+    return kind === "money" ? `${sign}${currency(value)}` : `${sign}${value}`;
+  }
+
+  function formatComparisonPercent(value: number | null) {
+    if (value === null) return "—";
+    const rounded = Math.round(value * 10) / 10;
+    return `${rounded > 0 ? "+" : ""}${rounded.toLocaleString("es-ES")}%`;
   }
 
   function flash(message: string) {
@@ -1875,6 +2051,16 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                         </button>
                       </div>
 
+                      <button
+                        className={`calendar-compare-toggle ${billingCompareOpen ? "active" : ""}`}
+                        onClick={() => {
+                          setBillingCompareOpen((open) => !open);
+                          setSelectedBillingDay(null);
+                        }}
+                      >
+                        Comparar
+                      </button>
+
                       <div className="billing-modal-actions">
                         <button className="calendar-nav" onClick={() => changeBillingCalendarPeriod(-1)} aria-label="Periodo anterior">←</button>
                         <button
@@ -1890,6 +2076,225 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                         <button className="calendar-close" onClick={() => setBillingCalendarOpen(false)} aria-label="Cerrar">×</button>
                       </div>
                     </div>
+
+                    {billingCompareOpen && (
+                      <div
+                        className="billing-compare-layer"
+                        role="presentation"
+                        onMouseDown={(e) => {
+                          if (e.target === e.currentTarget) setBillingCompareOpen(false);
+                        }}
+                      >
+                        <section
+                          className="billing-compare-panel"
+                          role="dialog"
+                          aria-modal="true"
+                          aria-labelledby="billing-compare-title"
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          <div className="billing-compare-head">
+                            <div>
+                              <p className="eyebrow">Facturado</p>
+                              <h3 id="billing-compare-title">Comparar periodos</h3>
+                              <p className="muted">El periodo B se compara contra el periodo A.</p>
+                            </div>
+                            <button
+                              className="billing-detail-close"
+                              onClick={() => setBillingCompareOpen(false)}
+                              aria-label="Cerrar comparador"
+                            >
+                              ×
+                            </button>
+                          </div>
+
+                          <div className="billing-compare-mode" aria-label="Tipo de comparación">
+                            <button
+                              className={billingCompareMode === "month" ? "active" : ""}
+                              onClick={() => setBillingCompareMode("month")}
+                            >
+                              Meses
+                            </button>
+                            <button
+                              className={billingCompareMode === "year" ? "active" : ""}
+                              onClick={() => setBillingCompareMode("year")}
+                            >
+                              Años
+                            </button>
+                            <button
+                              className={billingCompareMode === "range" ? "active" : ""}
+                              onClick={() => setBillingCompareMode("range")}
+                            >
+                              Franjas de fecha
+                            </button>
+                          </div>
+
+                          <div className={`billing-compare-fields ${billingCompareMode}`}>
+                            {billingCompareMode === "month" && (
+                              <>
+                                <label>
+                                  Periodo A
+                                  <input
+                                    type="month"
+                                    value={billingCompareMonthA}
+                                    onChange={(e) => setBillingCompareMonthA(e.target.value)}
+                                  />
+                                </label>
+                                <button className="billing-compare-swap" onClick={swapBillingComparisonPeriods} aria-label="Intercambiar periodos">
+                                  ⇄
+                                </button>
+                                <label>
+                                  Periodo B
+                                  <input
+                                    type="month"
+                                    value={billingCompareMonthB}
+                                    onChange={(e) => setBillingCompareMonthB(e.target.value)}
+                                  />
+                                </label>
+                              </>
+                            )}
+
+                            {billingCompareMode === "year" && (
+                              <>
+                                <label>
+                                  Periodo A
+                                  <input
+                                    type="number"
+                                    min="2000"
+                                    max="2100"
+                                    step="1"
+                                    value={billingCompareYearA}
+                                    onChange={(e) => setBillingCompareYearA(e.target.value)}
+                                  />
+                                </label>
+                                <button className="billing-compare-swap" onClick={swapBillingComparisonPeriods} aria-label="Intercambiar periodos">
+                                  ⇄
+                                </button>
+                                <label>
+                                  Periodo B
+                                  <input
+                                    type="number"
+                                    min="2000"
+                                    max="2100"
+                                    step="1"
+                                    value={billingCompareYearB}
+                                    onChange={(e) => setBillingCompareYearB(e.target.value)}
+                                  />
+                                </label>
+                              </>
+                            )}
+
+                            {billingCompareMode === "range" && (
+                              <>
+                                <fieldset>
+                                  <legend>Periodo A</legend>
+                                  <label>
+                                    Desde
+                                    <input
+                                      type="date"
+                                      value={billingCompareRangeA.from}
+                                      onChange={(e) => setBillingCompareRangeA((current) => ({ ...current, from: e.target.value }))}
+                                    />
+                                  </label>
+                                  <label>
+                                    Hasta
+                                    <input
+                                      type="date"
+                                      value={billingCompareRangeA.to}
+                                      onChange={(e) => setBillingCompareRangeA((current) => ({ ...current, to: e.target.value }))}
+                                    />
+                                  </label>
+                                </fieldset>
+                                <button className="billing-compare-swap" onClick={swapBillingComparisonPeriods} aria-label="Intercambiar periodos">
+                                  ⇄
+                                </button>
+                                <fieldset>
+                                  <legend>Periodo B</legend>
+                                  <label>
+                                    Desde
+                                    <input
+                                      type="date"
+                                      value={billingCompareRangeB.from}
+                                      onChange={(e) => setBillingCompareRangeB((current) => ({ ...current, from: e.target.value }))}
+                                    />
+                                  </label>
+                                  <label>
+                                    Hasta
+                                    <input
+                                      type="date"
+                                      value={billingCompareRangeB.to}
+                                      onChange={(e) => setBillingCompareRangeB((current) => ({ ...current, to: e.target.value }))}
+                                    />
+                                  </label>
+                                </fieldset>
+                              </>
+                            )}
+                          </div>
+
+                          {billingComparison ? (
+                            <div className="billing-comparison-results">
+                              <div className="billing-comparison-periods">
+                                <article>
+                                  <span>Periodo A</span>
+                                  <strong>{billingComparison.periodA.label}</strong>
+                                  <b>{billingVisible ? currency(billingComparison.a.total) : "•••••• €"}</b>
+                                  <small>{billingComparison.a.invoices} {billingComparison.a.invoices === 1 ? "factura" : "facturas"}</small>
+                                </article>
+                                <article className="comparison-change-card">
+                                  <span>Cambio B vs A</span>
+                                  <strong className={billingComparison.delta.total > 0 ? "positive" : billingComparison.delta.total < 0 ? "negative" : ""}>
+                                    {billingVisible ? formatComparisonDelta(billingComparison.delta.total, "money") : "•••• €"}
+                                  </strong>
+                                  <small>{formatComparisonPercent(billingComparison.percent.total)}</small>
+                                </article>
+                                <article>
+                                  <span>Periodo B</span>
+                                  <strong>{billingComparison.periodB.label}</strong>
+                                  <b>{billingVisible ? currency(billingComparison.b.total) : "•••••• €"}</b>
+                                  <small>{billingComparison.b.invoices} {billingComparison.b.invoices === 1 ? "factura" : "facturas"}</small>
+                                </article>
+                              </div>
+
+                              <div className="billing-comparison-table" role="table" aria-label="Detalle de comparación">
+                                <div className="comparison-row comparison-head-row" role="row">
+                                  <span>Métrica</span>
+                                  <span>A</span>
+                                  <span>B</span>
+                                  <span>Diferencia</span>
+                                  <span>%</span>
+                                </div>
+                                {[
+                                  ["Total facturado", billingComparison.a.total, billingComparison.b.total, billingComparison.delta.total, billingComparison.percent.total, "money"],
+                                  ["Cobrado", billingComparison.a.collected, billingComparison.b.collected, billingComparison.delta.collected, billingComparison.percent.collected, "money"],
+                                  ["Por cobrar", billingComparison.a.receivable, billingComparison.b.receivable, billingComparison.delta.receivable, billingComparison.percent.receivable, "money"],
+                                  ["Borradores", billingComparison.a.drafts, billingComparison.b.drafts, billingComparison.delta.drafts, billingComparison.percent.drafts, "money"],
+                                  ["Facturas", billingComparison.a.invoices, billingComparison.b.invoices, billingComparison.delta.invoices, billingComparison.percent.invoices, "count"]
+                                ].map(([label, a, b, delta, percent, kind]) => {
+                                  const numericA = Number(a);
+                                  const numericB = Number(b);
+                                  const numericDelta = Number(delta);
+                                  const isMoney = kind === "money";
+                                  return (
+                                    <div className="comparison-row" role="row" key={String(label)}>
+                                      <strong>{String(label)}</strong>
+                                      <span>{isMoney ? (billingVisible ? currency(numericA) : "•••• €") : numericA}</span>
+                                      <span>{isMoney ? (billingVisible ? currency(numericB) : "•••• €") : numericB}</span>
+                                      <span className={numericDelta > 0 ? "positive" : numericDelta < 0 ? "negative" : ""}>
+                                        {isMoney
+                                          ? (billingVisible ? formatComparisonDelta(numericDelta, "money") : "•••• €")
+                                          : formatComparisonDelta(numericDelta, "count")}
+                                      </span>
+                                      <span>{formatComparisonPercent(percent === null ? null : Number(percent))}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="billing-comparison-empty">Completa ambos periodos para ver la comparación.</p>
+                          )}
+                        </section>
+                      </div>
+                    )}
 
                     <div className="billing-modal-summary">
                       <article>
