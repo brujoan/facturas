@@ -31,5 +31,8 @@ assert(invoicePdf.includes('"FACTURA A"'), "El PDF aprobado debe mostrar FACTURA
 assert(!invoicePdf.includes("dueDate"), "El PDF de cliente no debe incluir vencimiento.");
 assert(!invoicePdf.includes("operationDate"), "El PDF de cliente no debe incluir fecha de operación.");
 assert(invoicePdf.includes("issueDate.split(\"-\").join(\"_\")"), "El nombre del PDF debe comenzar por la fecha de emisión.");
+assert(app.includes("billingCalendarOpen"), "Facturado debe abrir el calendario visual mensual.");
+assert(app.includes("billingCalendarData"), "El calendario debe agrupar la facturación por día.");
+assert(app.includes("Acumulado mensual"), "La vista de Facturado debe mostrar acumulado mensual.");
 
 console.log("Stability checks OK");
