@@ -2031,7 +2031,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                       <thead>
                         <tr className="sortable-head">
                           <th><button onClick={() => toggleInvoiceSort("number")}>Número <span>{sortMark("number")}</span></button></th>
-                          <th><button onClick={() => toggleInvoiceSort("date")}>Fecha <span>{sortMark("date")}</span></button></th>
+                          <th><button onClick={() => toggleInvoiceSort("date")}>Emisión <span>{sortMark("date")}</span></button></th>
                           <th><button onClick={() => toggleInvoiceSort("collectionDate")}>Cobro <span>{sortMark("collectionDate")}</span></button></th>
                           <th><button onClick={() => toggleInvoiceSort("client")}>Cliente <span>{sortMark("client")}</span></button></th>
                           <th><button onClick={() => toggleInvoiceSort("status")}>Estado <span>{sortMark("status")}</span></button></th>
