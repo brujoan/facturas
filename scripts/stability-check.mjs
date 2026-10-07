@@ -26,7 +26,7 @@ assert(edge.includes('BACKUP_FAILED'), "Una escritura debe abortar si no se pued
 assert(edge.includes('DUPLICATE_INVOICE_NUMBER'), "El servidor debe bloquear números de factura duplicados.");
 assert(edge.includes('recurringExpenses'), "La sincronización fiscal debe conservar los gastos recurrentes.");
 assert(fiscal.includes('recurringExpenseId'), "Los gastos recurrentes deben materializarse sin duplicados.");
-assert(app.includes('downloadInvoicePdf'), "La factura debe descargarse como PDF generado, no depender de window.print.");
+assert(app.includes('buildInvoicePdf'), "La factura debe generarse como PDF real, no depender de window.print.");
 assert(invoicePdf.includes('"FACTURA A"'), "El PDF aprobado debe mostrar FACTURA A.");
 assert(!invoicePdf.includes("dueDate"), "El PDF de cliente no debe incluir vencimiento.");
 assert(!invoicePdf.includes("operationDate"), "El PDF de cliente no debe incluir fecha de operación.");
@@ -49,5 +49,10 @@ assert(app.includes("detail: line.detail ||"), "La descripción detallada debe e
 assert(invoicePdf.includes("detail?: string"), "El generador PDF debe aceptar la descripción detallada.");
 assert(invoicePdf.includes("const COMPACT"), "El PDF debe disponer de una maquetación compacta para priorizar una sola página.");
 assert(invoicePdf.includes("fitsSinglePage"), "El PDF debe intentar encajar el contenido en una sola página antes de paginar.");
+assert(app.includes("pdfPreview"), "La app debe tener estado para previsualizar el PDF.");
+assert(app.includes("buildInvoicePdf"), "La previsualización debe reutilizar el generador PDF real.");
+assert(app.includes("pdf-preview-frame"), "La previsualización debe mostrar el PDF dentro de la app.");
+assert(app.includes("Descargar PDF"), "La previsualización debe permitir descargar el PDF tras revisarlo.");
+assert(!app.includes("onClick={() => printInvoice(invoice)}"), "El botón PDF no debe descargar directamente sin previsualización.");
 
 console.log("Stability checks OK");
