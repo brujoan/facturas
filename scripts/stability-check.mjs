@@ -39,5 +39,9 @@ assert(app.includes("invoiceCalendarDate"), "El calendario debe usar una fecha d
 assert(app.includes('invoice.invoiceMode || "normal") === "monthly"'), "Las facturas mensuales deben identificarse para usar fecha de emisión.");
 assert(app.includes("line.serviceDate?.startsWith"), "Los conceptos mensuales con fecha de operación deben aparecer en el calendario.");
 assert(app.includes("operationTotal"), "Las operaciones mensuales deben mostrarse sin duplicar el total facturado.");
+assert(app.includes("invoiceCountsForBilling"), "Facturado debe usar un criterio propio que incluya borradores.");
+assert(app.includes('invoice.status === "Borrador"'), "Facturado debe incluir facturas en borrador.");
+assert(app.includes("billingBreakdown.drafts"), "El resumen de Facturado debe separar el importe de borradores.");
+assert(fiscal.includes('invoiceCountsAsIssued(invoice)'), "Los borradores deben seguir excluidos de trimestrales.");
 
 console.log("Stability checks OK");

@@ -310,6 +310,10 @@ function invoiceCountsAsIssued(invoice: Invoice) {
   return invoice.status === "Emitida" || invoice.status === "Cobrada";
 }
 
+function invoiceCountsForBilling(invoice: Invoice) {
+  return invoice.status === "Borrador" || invoice.status === "Emitida" || invoice.status === "Cobrada";
+}
+
 function invoiceCalendarDate(invoice: Invoice) {
   return (invoice.invoiceMode || "normal") === "monthly"
     ? invoice.issueDate
@@ -792,14 +796,15 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
     return invoices
       .filter((invoice) => {
-        if (!invoiceCountsAsIssued(invoice)) return false;
+        if (!invoiceCountsForBilling(invoice)) return false;
         if (billingPeriod === "total") return true;
 
-        const year = Number(invoice.issueDate.slice(0, 4));
+        const referenceDate = invoiceCalendarDate(invoice);
+        const year = Number(referenceDate.slice(0, 4));
         if (year !== currentYear) return false;
         if (billingPeriod === "year") return true;
 
-        const month = Number(invoice.issueDate.slice(5, 7));
+        const month = Number(referenceDate.slice(5, 7));
         return month === currentMonth;
       })
       .reduce((sum, invoice) => {
@@ -814,32 +819,37 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     const currentMonth = now.getMonth() + 1;
 
     const periodInvoices = invoices.filter((invoice) => {
-      if (!invoiceCountsAsIssued(invoice)) return false;
+      if (!invoiceCountsForBilling(invoice)) return false;
       if (billingPeriod === "total") return true;
 
-      const year = Number(invoice.issueDate.slice(0, 4));
+      const referenceDate = invoiceCalendarDate(invoice);
+      const year = Number(referenceDate.slice(0, 4));
       if (year !== currentYear) return false;
       if (billingPeriod === "year") return true;
 
-      return Number(invoice.issueDate.slice(5, 7)) === currentMonth;
+      return Number(referenceDate.slice(5, 7)) === currentMonth;
     });
 
     let collected = 0;
     let receivable = 0;
+    let drafts = 0;
 
     for (const invoice of periodInvoices) {
       const t = totals(invoice);
       const value = money(t.base + t.vat - t.withholding);
       if (invoice.status === "Cobrada") collected = money(collected + value);
       if (invoice.status === "Emitida") receivable = money(receivable + value);
+      if (invoice.status === "Borrador") drafts = money(drafts + value);
     }
 
-    const total = money(collected + receivable);
+    const total = money(collected + receivable + drafts);
     return {
       collected,
       receivable,
+      drafts,
       collectedPct: total > 0 ? collected / total : 0,
-      receivablePct: total > 0 ? receivable / total : 0
+      receivablePct: total > 0 ? receivable / total : 0,
+      draftsPct: total > 0 ? drafts / total : 0
     };
   }, [invoices, billingPeriod]);
 
@@ -874,7 +884,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     const groups = new Map<string, { year: number; month: number; invoices: number; total: number }>();
 
     invoices
-      .filter((invoice) => invoiceCountsAsIssued(invoice) && invoiceCalendarDate(invoice))
+      .filter((invoice) => invoiceCountsForBilling(invoice) && invoiceCalendarDate(invoice))
       .forEach((invoice) => {
         const referenceDate = invoiceCalendarDate(invoice);
         const year = Number(referenceDate.slice(0, 4));
@@ -914,6 +924,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       total: number;
       collected: number;
       receivable: number;
+      drafts: number;
       operations: CalendarOperation[];
       operationTotal: number;
     };
@@ -929,6 +940,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         total: 0,
         collected: 0,
         receivable: 0,
+        drafts: 0,
         operations: [],
         operationTotal: 0
       };
@@ -938,7 +950,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
 
     const monthInvoices = invoices
       .filter((invoice) => {
-        if (!invoiceCountsAsIssued(invoice)) return false;
+        if (!invoiceCountsForBilling(invoice)) return false;
         const referenceDate = invoiceCalendarDate(invoice);
         return referenceDate?.startsWith(`${billingCalendarMonth}-`);
       })
@@ -951,6 +963,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     let total = 0;
     let collected = 0;
     let receivable = 0;
+    let drafts = 0;
 
     for (const invoice of monthInvoices) {
       const t = totals(invoice);
@@ -960,16 +973,18 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       total = money(total + value);
       if (invoice.status === "Cobrada") collected = money(collected + value);
       if (invoice.status === "Emitida") receivable = money(receivable + value);
+      if (invoice.status === "Borrador") drafts = money(drafts + value);
 
       const current = dayEntry(referenceDate);
       current.invoices.push(invoice);
       current.total = money(current.total + value);
       if (invoice.status === "Cobrada") current.collected = money(current.collected + value);
       if (invoice.status === "Emitida") current.receivable = money(current.receivable + value);
+      if (invoice.status === "Borrador") current.drafts = money(current.drafts + value);
     }
 
     for (const invoice of invoices) {
-      if (!invoiceCountsAsIssued(invoice) || (invoice.invoiceMode || "normal") !== "monthly") continue;
+      if (!invoiceCountsForBilling(invoice) || (invoice.invoiceMode || "normal") !== "monthly") continue;
 
       for (const line of invoice.lines) {
         if (!line.serviceDate?.startsWith(`${billingCalendarMonth}-`)) continue;
@@ -1022,6 +1037,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
       total,
       collected,
       receivable,
+      drafts,
       cumulative,
       chartPoints
     };
@@ -1692,6 +1708,11 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                       <strong>{billingVisible ? currency(billingBreakdown.receivable) : "•••• €"}</strong>
                       <small>{Math.round(billingBreakdown.receivablePct * 100)}%</small>
                     </div>
+                    <div>
+                      <span>Borradores</span>
+                      <strong>{billingVisible ? currency(billingBreakdown.drafts) : "•••• €"}</strong>
+                      <small>{Math.round(billingBreakdown.draftsPct * 100)}%</small>
+                    </div>
                   </div>
                 </article>
                 <article className="stat-card">
@@ -1765,6 +1786,15 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                         <small>
                           {billingCalendarData.total > 0
                             ? Math.round((billingCalendarData.receivable / billingCalendarData.total) * 100)
+                            : 0}%
+                        </small>
+                      </article>
+                      <article className="summary-drafts">
+                        <span>Borradores</span>
+                        <strong>{billingVisible ? currency(billingCalendarData.drafts) : "•••• €"}</strong>
+                        <small>
+                          {billingCalendarData.total > 0
+                            ? Math.round((billingCalendarData.drafts / billingCalendarData.total) * 100)
                             : 0}%
                         </small>
                       </article>
