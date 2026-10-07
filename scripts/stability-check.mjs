@@ -43,5 +43,11 @@ assert(app.includes("invoiceCountsForBilling"), "Facturado debe usar un criterio
 assert(app.includes('invoice.status === "Borrador"'), "Facturado debe incluir facturas en borrador.");
 assert(app.includes("billingBreakdown.drafts"), "El resumen de Facturado debe separar el importe de borradores.");
 assert(fiscal.includes('invoiceCountsAsIssued(invoice)'), "Los borradores deben seguir excluidos de trimestrales.");
+assert(app.includes("detail?: string"), "Las líneas de factura deben admitir una descripción detallada.");
+assert(app.includes("concept-detail-input"), "El editor debe mostrar el campo de descripción del concepto.");
+assert(app.includes("detail: line.detail ||"), "La descripción detallada debe enviarse al PDF.");
+assert(invoicePdf.includes("detail?: string"), "El generador PDF debe aceptar la descripción detallada.");
+assert(invoicePdf.includes("const COMPACT"), "El PDF debe disponer de una maquetación compacta para priorizar una sola página.");
+assert(invoicePdf.includes("fitsSinglePage"), "El PDF debe intentar encajar el contenido en una sola página antes de paginar.");
 
 console.log("Stability checks OK");
