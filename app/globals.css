@@ -1967,3 +1967,676 @@ h3 { margin-bottom: 8px; }
     padding: 8px;
   }
 }
+
+
+/* v0.10.0 · Lista compacta y calendario multivista */
+.table-scroll {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.invoice-list-table {
+  width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.invoice-list-table col.col-number { width: 8%; }
+.invoice-list-table col.col-date { width: 9%; }
+.invoice-list-table col.col-client { width: 17%; }
+.invoice-list-table col.col-status { width: 9%; }
+.invoice-list-table col.col-total { width: 10%; }
+.invoice-list-table col.col-notes { width: 22%; }
+.invoice-list-table col.col-actions { width: 16%; }
+
+.invoice-list-table th {
+  padding: 9px 6px;
+  font-size: 9px;
+  letter-spacing: .035em;
+  overflow: hidden;
+}
+
+.invoice-list-table td {
+  padding: 10px 6px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.invoice-list-table td:nth-child(1),
+.invoice-list-table td:nth-child(2),
+.invoice-list-table td:nth-child(3),
+.invoice-list-table td:nth-child(5),
+.invoice-list-table td:nth-child(6) {
+  white-space: nowrap;
+}
+
+.invoice-list-table td:nth-child(4) {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.invoice-list-table .sortable-head button {
+  max-width: 100%;
+  padding: 0;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.invoice-list-table .filter-row th {
+  padding: 5px 4px 7px;
+}
+
+.invoice-list-table .filter-row input,
+.invoice-list-table .filter-row select {
+  padding: 5px 4px;
+  font-size: 8px;
+  border-radius: 6px;
+}
+
+.invoice-list-table .date-filter,
+.invoice-list-table .total-filter {
+  grid-template-columns: 1fr;
+  gap: 3px;
+}
+
+.invoice-list-table input[type="date"] {
+  min-width: 0;
+  font-size: 8px;
+}
+
+.invoice-list-table input[type="date"]::-webkit-calendar-picker-indicator {
+  width: 10px;
+  height: 10px;
+  margin: 0;
+  padding: 0;
+}
+
+.invoice-list-table .status {
+  padding: 4px 6px;
+  font-size: 9px;
+}
+
+.invoice-list-table .invoice-observation-cell input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 7px;
+  font-size: 9px;
+}
+
+.invoice-list-table .actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 4px;
+  white-space: normal;
+  text-align: left;
+}
+
+.invoice-list-table .actions button,
+.invoice-list-table .actions .danger-link {
+  min-width: 0;
+  padding: 3px 2px;
+  font-size: 9px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.billing-modal-backdrop {
+  padding: 12px;
+}
+
+.billing-modal {
+  position: relative;
+  width: min(1240px, calc(100vw - 24px));
+  height: min(94vh, 900px);
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.billing-modal-head {
+  flex: 0 0 auto;
+  min-height: 42px;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.billing-modal-title {
+  min-width: 170px;
+}
+
+.billing-modal-head h2 {
+  margin-top: 1px;
+  font-size: 18px;
+}
+
+.calendar-view-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #eef1f5;
+}
+
+.calendar-view-switch button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #667085;
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.calendar-view-switch button.active {
+  background: white;
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .08);
+}
+
+.billing-modal-actions {
+  margin-left: auto;
+}
+
+.calendar-nav,
+.calendar-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.calendar-today {
+  height: 30px;
+  padding: 0 9px;
+}
+
+.billing-modal-summary {
+  flex: 0 0 auto;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+
+.billing-modal-summary article {
+  min-height: 55px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.billing-modal-summary span {
+  font-size: 8px;
+}
+
+.billing-modal-summary strong {
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.billing-modal-summary small {
+  margin-top: 1px;
+  font-size: 7px;
+}
+
+.billing-cumulative {
+  flex: 0 0 61px;
+  margin-bottom: 7px;
+  padding: 7px 10px 4px;
+  border-radius: 10px;
+}
+
+.billing-cumulative-head {
+  align-items: center;
+}
+
+.billing-cumulative-head span {
+  font-size: 8px;
+}
+
+.billing-cumulative-head strong {
+  display: inline;
+  margin: 0 0 0 8px;
+  font-size: 11px;
+}
+
+.billing-cumulative-head small {
+  font-size: 7px;
+}
+
+.billing-cumulative svg {
+  height: 26px;
+  margin-top: 2px;
+}
+
+.billing-chart-labels {
+  margin-top: -2px;
+  font-size: 6px;
+}
+
+.billing-calendar-collection {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.billing-calendar-collection.month {
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.billing-calendar-collection.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.billing-calendar-collection.year {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.billing-calendar-month {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.billing-calendar-month-title {
+  flex: 0 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.billing-calendar-month-title strong {
+  overflow: hidden;
+  font-size: 9px;
+  text-transform: capitalize;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billing-calendar-month-title span {
+  color: var(--muted);
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.calendar-view-month .billing-calendar-month-title {
+  display: none;
+}
+
+.billing-calendar-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 22px minmax(0, 1fr);
+  border-radius: 9px;
+}
+
+.billing-calendar-weekdays {
+  min-height: 0;
+}
+
+.billing-calendar-weekdays span {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 7px;
+}
+
+.billing-calendar-grid {
+  min-height: 0;
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+}
+
+.billing-calendar-empty,
+.billing-day {
+  min-height: 0 !important;
+}
+
+.billing-day {
+  padding: 4px 5px;
+}
+
+.billing-day-number {
+  font-size: 8px;
+}
+
+.billing-day.today .billing-day-number {
+  min-width: 18px;
+  height: 18px;
+  margin: -2px 0 0 -2px;
+  border-radius: 5px;
+  font-size: 7px;
+}
+
+.calendar-view-month .billing-day strong {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.calendar-view-month .billing-day small {
+  margin-top: 1px;
+  font-size: 6.5px;
+  line-height: 1.05;
+}
+
+.calendar-view-three .billing-day,
+.calendar-view-year .billing-day {
+  padding: 2px 3px;
+}
+
+.calendar-view-three .billing-day-number,
+.calendar-view-year .billing-day-number {
+  font-size: 7px;
+}
+
+.billing-day .mini-amount {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 7px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-view-year .billing-calendar-month-title {
+  flex-basis: 18px;
+}
+
+.calendar-view-year .billing-calendar-month-title strong {
+  font-size: 7px;
+}
+
+.calendar-view-year .billing-calendar-month-title span {
+  font-size: 6.5px;
+}
+
+.calendar-view-year .billing-calendar-shell {
+  grid-template-rows: 16px minmax(0, 1fr);
+  border-radius: 7px;
+}
+
+.calendar-view-year .billing-calendar-weekdays span {
+  font-size: 5.5px;
+}
+
+.calendar-view-year .billing-day {
+  padding: 1px 2px;
+}
+
+.calendar-view-year .billing-day-number {
+  font-size: 6px;
+}
+
+.calendar-view-year .billing-day.today .billing-day-number {
+  min-width: 13px;
+  height: 13px;
+  margin: 0;
+  border-radius: 4px;
+  font-size: 5.5px;
+}
+
+.calendar-view-year .billing-day .mini-amount {
+  margin-top: 1px;
+  font-size: 5.5px;
+}
+
+.billing-day-detail {
+  position: absolute;
+  z-index: 20;
+  right: 14px;
+  bottom: 14px;
+  width: min(390px, calc(100% - 28px));
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, .24);
+}
+
+.billing-detail-close {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 7px;
+  background: #eef1f5;
+  color: var(--text);
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.billing-day-detail .section-title {
+  min-height: 0;
+  margin: 0 28px 7px 0;
+}
+
+.billing-day-detail h3 {
+  font-size: 11px;
+}
+
+.billing-day-detail .muted {
+  font-size: 8px;
+}
+
+.billing-day-invoices {
+  gap: 4px;
+}
+
+.billing-day-invoices article {
+  padding: 7px 8px;
+}
+
+.billing-day-invoices strong {
+  font-size: 9px;
+}
+
+.billing-day-invoices span:not(.status) {
+  font-size: 8px;
+}
+
+@media (max-width: 1050px) {
+  .invoice-list-table th {
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 8px;
+  }
+
+  .invoice-list-table td {
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 10px;
+  }
+
+  .invoice-list-table col.col-client { width: 15%; }
+  .invoice-list-table col.col-notes { width: 21%; }
+  .invoice-list-table col.col-actions { width: 19%; }
+
+  .billing-modal {
+    width: calc(100vw - 12px);
+    height: 96vh;
+    padding: 10px;
+  }
+
+  .billing-calendar-collection.year {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .billing-modal-backdrop {
+    padding: 0;
+  }
+
+  .billing-modal {
+    width: 100%;
+    height: 100dvh;
+    max-height: none;
+    padding: 8px;
+    border-radius: 0;
+  }
+
+  .billing-modal-head {
+    min-height: 38px;
+    margin-bottom: 5px;
+    gap: 5px;
+  }
+
+  .billing-modal-title {
+    min-width: 95px;
+  }
+
+  .billing-modal-head .eyebrow {
+    display: none;
+  }
+
+  .billing-modal-head h2 {
+    font-size: 12px;
+  }
+
+  .calendar-view-switch {
+    gap: 1px;
+    padding: 2px;
+  }
+
+  .calendar-view-switch button {
+    height: 25px;
+    padding: 0 5px;
+    font-size: 7px;
+  }
+
+  .calendar-today {
+    display: none;
+  }
+
+  .billing-modal-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
+    margin-bottom: 4px;
+  }
+
+  .billing-modal-summary article:first-child {
+    grid-column: auto;
+  }
+
+  .billing-modal-summary article {
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .billing-modal-summary strong {
+    font-size: 10px;
+  }
+
+  .billing-modal-summary span,
+  .billing-modal-summary small {
+    font-size: 6px;
+  }
+
+  .billing-cumulative {
+    flex-basis: 48px;
+    margin-bottom: 4px;
+    padding: 4px 6px 2px;
+  }
+
+  .billing-cumulative svg {
+    height: 20px;
+  }
+
+  .billing-cumulative-head small {
+    display: none;
+  }
+
+  .billing-calendar-collection,
+  .billing-calendar-collection.three,
+  .billing-calendar-collection.year {
+    gap: 3px;
+  }
+
+  .billing-calendar-collection.three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .billing-calendar-collection.year {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+  }
+
+  .billing-calendar-month-title {
+    flex-basis: 16px;
+  }
+
+  .billing-calendar-month-title strong {
+    font-size: 6px;
+  }
+
+  .billing-calendar-month-title span {
+    font-size: 5.5px;
+  }
+
+  .billing-calendar-shell {
+    grid-template-rows: 14px minmax(0, 1fr);
+  }
+
+  .billing-calendar-weekdays span,
+  .billing-day-number {
+    font-size: 5px;
+  }
+
+  .billing-day .mini-amount {
+    font-size: 4.8px;
+  }
+
+  .calendar-view-month .billing-day strong {
+    font-size: 8px;
+  }
+
+  .calendar-view-month .billing-day small {
+    font-size: 5.5px;
+  }
+
+  .billing-day-detail {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100% - 16px);
+    max-height: 180px;
+  }
+
+  .invoice-list-table th,
+  .invoice-list-table td {
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+
+  .invoice-list-table th {
+    font-size: 7px;
+  }
+
+  .invoice-list-table td {
+    font-size: 9px;
+  }
+
+  .invoice-list-table .filter-row input,
+  .invoice-list-table .filter-row select,
+  .invoice-list-table .actions button,
+  .invoice-list-table .actions .danger-link {
+    font-size: 7px;
+  }
+}
