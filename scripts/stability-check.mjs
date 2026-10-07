@@ -55,5 +55,11 @@ assert(app.includes("pdf-preview-frame"), "La previsualización debe mostrar el 
 assert(app.includes("Descargar PDF"), "La previsualización debe permitir descargar el PDF tras revisarlo.");
 assert(invoicePdf.includes('replace(/\\r\\n?/g, "\\n").split("\\n")'), "El PDF debe respetar saltos de línea explícitos en observaciones y textos multilínea.");
 assert(!app.includes("onClick={() => printInvoice(invoice)}"), "El botón PDF no debe descargar directamente sin previsualización.");
+assert(app.includes("collectionDate?: string"), "Las facturas deben admitir fecha de cobro.");
+assert(app.includes("Fecha de cobro"), "El editor debe mostrar la fecha de cobro.");
+assert(app.includes("collectionDateFrom") && app.includes("collectionDateTo"), "La lista debe permitir filtrar por fecha de cobro.");
+assert(app.includes('toggleInvoiceSort("collectionDate")'), "La columna de cobro debe poder ordenarse.");
+assert(app.includes('billingVisible ? currency(t.base + t.vat - t.withholding) : "•••• €"'), "Los importes individuales deben respetar el modo oculto de Facturado.");
+assert(!app.includes("<label>Vencimiento"), "La interfaz ya no debe mostrar fecha de vencimiento.");
 
 console.log("Stability checks OK");
