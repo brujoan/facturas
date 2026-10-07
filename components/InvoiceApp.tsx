@@ -50,6 +50,7 @@ type InvoiceLine = {
   id: string;
   activityId: string;
   description: string;
+  detail?: string;
   serviceDate?: string;
   quantity: number;
   unitPrice: number;
@@ -60,6 +61,7 @@ type InvoiceLine = {
 type SavedConcept = {
   id: string;
   description: string;
+  detail?: string;
   activityId: string;
   unitPrice: number;
   vat: number;
@@ -250,6 +252,7 @@ function emptyLine(activity?: ActivityPreset): InvoiceLine {
     id: uid(),
     activityId: activity?.id || "",
     description: "",
+    detail: "",
     serviceDate: "",
     quantity: 1,
     unitPrice: 0,
@@ -1279,6 +1282,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     updateLine(lineId, saved
       ? {
           description,
+          detail: saved.detail || "",
           activityId: saved.activityId,
           unitPrice: saved.unitPrice,
           vat: saved.vat,
@@ -1304,6 +1308,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         const concept: SavedConcept = {
           id: existingIndex >= 0 ? next[existingIndex].id : uid(),
           description,
+          detail: line.detail?.trim() || "",
           activityId: line.activityId,
           unitPrice: Number(line.unitPrice || 0),
           vat: Number(line.vat || 0),
@@ -1501,6 +1506,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         },
         lines: invoice.lines.map((line) => ({
           description: line.description,
+          detail: line.detail || "",
           quantity: Number(line.quantity || 0),
           unitPrice: Number(line.unitPrice || 0),
           vat: Number(line.vat || 0),
@@ -2237,7 +2243,14 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                             autoComplete="off"
                             value={line.description}
                             onChange={(e) => applyConcept(line.id, e.target.value)}
-                            placeholder="Descripción del servicio o trabajo realizado"
+                            placeholder="Concepto"
+                          />
+                          <input
+                            className="concept-detail-input"
+                            autoComplete="off"
+                            value={line.detail || ""}
+                            onChange={(e) => updateLine(line.id, { detail: e.target.value })}
+                            placeholder="Descripción / detalle que aparecerá bajo el concepto"
                           />
                         </div>
                         <input type="number" min="0" step="0.01" value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Number(e.target.value) })} />
