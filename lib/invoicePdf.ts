@@ -104,7 +104,6 @@ function groupTax(lines: InvoicePdfLine[], field: "vat" | "withholding") {
   const groups = new Map<number, number>();
   for (const line of lines) {
     const rate = Number(line[field] || 0);
-    if (field === "withholding" && rate === 0) continue;
     const amount = lineBase(line) * (rate / 100);
     groups.set(rate, (groups.get(rate) || 0) + amount);
   }
