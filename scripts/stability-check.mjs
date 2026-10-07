@@ -49,5 +49,10 @@ assert(app.includes("detail: line.detail ||"), "La descripción detallada debe e
 assert(invoicePdf.includes("detail?: string"), "El generador PDF debe aceptar la descripción detallada.");
 assert(invoicePdf.includes("const COMPACT"), "El PDF debe disponer de una maquetación compacta para priorizar una sola página.");
 assert(invoicePdf.includes("fitsSinglePage"), "El PDF debe intentar encajar el contenido en una sola página antes de paginar.");
+assert(app.includes("pdfPreview"), "La app debe tener estado para previsualizar el PDF.");
+assert(app.includes("buildInvoicePdf"), "La previsualización debe reutilizar el generador PDF real.");
+assert(app.includes("pdf-preview-frame"), "La previsualización debe mostrar el PDF dentro de la app.");
+assert(app.includes("Descargar PDF"), "La previsualización debe permitir descargar el PDF tras revisarlo.");
+assert(!app.includes("onClick={() => printInvoice(invoice)}"), "El botón PDF no debe descargar directamente sin previsualización.");
 
 console.log("Stability checks OK");
