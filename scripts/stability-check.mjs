@@ -10,6 +10,7 @@ function assert(condition, message) {
 
 const app = file("components/InvoiceApp.tsx");
 const fiscal = file("components/FiscalPanel.tsx");
+const finance = file("components/FinancePanel.tsx");
 const edge = file("supabase/functions/facturas-sync/index.ts");
 const invoicePdf = file("lib/invoicePdf.ts");
 const styles = file("app/globals.css");
@@ -75,5 +76,15 @@ assert(app.includes("Comparar periodos"), "El calendario debe incluir el panel c
 assert(app.includes("billingCompareRangeA") && app.includes("billingCompareRangeB"), "El comparador debe admitir dos franjas de fechas.");
 assert(app.includes("Cambio B vs A"), "El comparador debe mostrar la diferencia entre periodos.");
 assert(styles.includes(".billing-compare-panel"), "El comparador debe tener estilos propios y responsive.");
+
+assert(app.includes("changeInvoiceStatus"), "La lista de facturas debe permitir cambiar el estado directamente.");
+assert(app.includes("invoice-status-select"), "La lista debe mostrar un selector de estado por factura.");
+assert(app.includes("Una factura ya numerada no puede volver a Borrador"), "La edición rápida de estado debe proteger la numeración emitida.");
+assert(app.includes('tab === "finanzas"'), "La app debe incluir el apartado de ingresos y gastos.");
+assert(finance.includes("Ingresos y gastos"), "El apartado financiero debe mostrar ingresos y gastos.");
+assert(finance.includes("profit: money(incomeBase - expenseBase)"), "El beneficio debe calcularse como ingresos base menos gastos base.");
+assert(finance.includes("fiscalProfit: money(incomeBase - deductibleExpenseBase)"), "La vista debe separar el rendimiento fiscal aproximado.");
+assert(finance.includes('fetch("/api/fiscal"'), "La vista financiera debe reutilizar los gastos del control fiscal.");
+assert(styles.includes(".finance-kpis") && styles.includes(".invoice-status-select"), "La nueva interfaz debe tener estilos responsive.");
 
 console.log("Stability checks OK");
