@@ -1617,13 +1617,14 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
         if (invalidServiceDate) return flash("Hay una fecha de concepto fuera del periodo facturado.");
       }
 
-      const manualNumber = draft.number.trim();
-      if (
-        manualNumber &&
-        invoices.some((invoice) => invoice.id !== editingId && invoice.number.trim() === manualNumber)
-      ) {
-        return flash(`Ya existe una factura con el número ${manualNumber}.`);
-      }
+    }
+
+    const manualNumber = draft.number.trim();
+    if (
+      manualNumber &&
+      invoices.some((invoice) => invoice.id !== editingId && invoice.number.trim() === manualNumber)
+    ) {
+      return flash(`Ya existe una factura con el número ${manualNumber}.`);
     }
 
     const previous = editingId ? invoices.find((item) => item.id === editingId) : undefined;
@@ -1738,10 +1739,6 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   function changeInvoiceStatus(invoice: Invoice, status: Status) {
     if (status === invoice.status) return;
 
-    if (status === "Borrador" && invoice.number.trim()) {
-      return flash("Una factura ya numerada no puede volver a Borrador. Puedes marcarla como Anulada.");
-    }
-
     if (status === "Emitida" || status === "Cobrada") {
       const error = invoiceStatusValidationError(invoice);
       if (error) return flash(error);
@@ -1775,7 +1772,9 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     flash(
       wasUnnumberedIssued
         ? "Estado actualizado. La numeración definitiva se asignará al sincronizar."
-        : `Estado cambiado a ${status}.`
+        : status === "Borrador" && invoice.number.trim()
+          ? `Factura devuelta a Borrador. El número ${invoice.number} queda reservado.`
+          : `Estado cambiado a ${status}.`
     );
   }
 
