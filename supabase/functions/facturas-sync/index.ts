@@ -135,9 +135,8 @@ function assignAndValidateInvoiceNumbers(invoices: Row[], now: string) {
   const used = new Map<string, string>();
 
   for (const invoice of invoices) {
-    const status = String(invoice.status || "Borrador");
     const number = String(invoice.number || "").trim();
-    if (!number || status === "Borrador") continue;
+    if (!number) continue;
 
     const existingId = used.get(number);
     const id = String(invoice.id || "");

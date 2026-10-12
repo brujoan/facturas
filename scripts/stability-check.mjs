@@ -79,7 +79,9 @@ assert(styles.includes(".billing-compare-panel"), "El comparador debe tener esti
 
 assert(app.includes("changeInvoiceStatus"), "La lista de facturas debe permitir cambiar el estado directamente.");
 assert(app.includes("invoice-status-select"), "La lista debe mostrar un selector de estado por factura.");
-assert(app.includes("Una factura ya numerada no puede volver a Borrador"), "La edición rápida de estado debe proteger la numeración emitida.");
+assert(!app.includes("Una factura ya numerada no puede volver a Borrador"), "Una factura numerada debe poder volver a Borrador conservando su número.");
+assert(app.includes("queda reservado"), "Al volver a Borrador debe indicarse que el número queda reservado.");
+assert(edge.includes('if (!number) continue;') && !edge.includes('if (!number || status === "Borrador") continue;'), "Los números de borradores numerados deben seguir reservados en sincronización.");
 assert(app.includes('tab === "finanzas"'), "La app debe incluir el apartado de ingresos y gastos.");
 assert(finance.includes("Ingresos y gastos"), "El apartado financiero debe mostrar ingresos y gastos.");
 assert(finance.includes("profit: money(incomeBase - expenseBase)"), "El beneficio debe calcularse como ingresos base menos gastos base.");
