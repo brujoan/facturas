@@ -181,10 +181,17 @@ export default function FinancePanel({
   }, []);
 
   const activeRange = useMemo(() => {
-    if (periodMode === "month") return monthRange(month);
-    if (periodMode === "year") return { from: `${year}-01-01`, to: `${year}-12-31` };
-    return range.from <= range.to ? range : { from: range.to, to: range.from };
-  }, [periodMode, month, year, range]);
+    if (periodMode === "month") return month ? monthRange(month) : monthRange(currentMonth);
+    if (periodMode === "year") {
+      const safeYear = /^\d{4}$/.test(year) ? year : currentYear;
+      return { from: `${safeYear}-01-01`, to: `${safeYear}-12-31` };
+    }
+
+    const fallback = monthRange(currentMonth);
+    const from = range.from || fallback.from;
+    const to = range.to || fallback.to;
+    return from <= to ? { from, to } : { from: to, to: from };
+  }, [periodMode, month, year, range, currentMonth, currentYear]);
 
   const filteredInvoices = useMemo(
     () => invoices
@@ -254,7 +261,7 @@ export default function FinancePanel({
         year: "numeric"
       });
     }
-    if (periodMode === "year") return year;
+    if (periodMode === "year") return /^\d{4}$/.test(year) ? year : currentYear;
 
     const formatter = new Intl.DateTimeFormat("es-ES", {
       day: "numeric",
