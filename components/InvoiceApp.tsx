@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import FiscalPanel from "@/components/FiscalPanel";
+import FinancePanel from "@/components/FinancePanel";
 import { buildInvoicePdf } from "@/lib/invoicePdf";
 
-type Tab = "facturas" | "nueva" | "clientes" | "fiscal" | "config";
+type Tab = "facturas" | "nueva" | "clientes" | "finanzas" | "fiscal" | "config";
 type BillingPeriod = "month" | "year" | "total";
 type BillingCalendarView = "month" | "three" | "year";
 type BillingCompareMode = "month" | "year" | "range";
@@ -1696,6 +1697,88 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     );
   }
 
+  function invoiceStatusValidationError(invoice: Invoice) {
+    const client = clients.find((item) => item.id === invoice.clientId);
+
+    if (!invoice.clientId || !client) return "Selecciona un cliente antes de emitir.";
+    if (!invoice.lines.some((line) => line.description.trim())) return "Añade al menos un concepto antes de emitir.";
+    if (!issuer.fiscalName || !issuer.taxId || !issuer.address || !issuer.postalCode || !issuer.city) {
+      return "Completa tus datos fiscales antes de emitir.";
+    }
+    if (!client.name || !client.taxId || !client.address) {
+      return "Completa nombre, NIF/CIF y dirección del cliente antes de emitir.";
+    }
+
+    for (const line of invoice.lines) {
+      if (!line.description.trim()) continue;
+      if (Number(line.quantity) <= 0) return "La cantidad de cada concepto debe ser mayor que 0.";
+      if (Number(line.unitPrice) < 0) return "El precio no puede ser negativo.";
+      if (Number(line.vat) < 0 || Number(line.vat) > 100) return "Revisa el porcentaje de IVA.";
+      if (Number(line.withholding) < 0 || Number(line.withholding) > 100) return "Revisa el porcentaje de IRPF.";
+    }
+
+    if ((invoice.invoiceMode || "normal") === "monthly") {
+      if (!invoice.periodFrom || !invoice.periodTo) return "Indica el periodo facturado antes de emitir.";
+      if (invoice.periodFrom > invoice.periodTo) return "La fecha inicial del periodo no puede ser posterior a la final.";
+      if (invoice.periodFrom.slice(0, 7) !== invoice.periodTo.slice(0, 7)) {
+        return "Una factura mensual debe corresponder a un único mes natural.";
+      }
+
+      const invalidServiceDate = invoice.lines.some(
+        (line) =>
+          line.serviceDate &&
+          (line.serviceDate < (invoice.periodFrom || "") || line.serviceDate > (invoice.periodTo || ""))
+      );
+      if (invalidServiceDate) return "Hay una fecha de concepto fuera del periodo facturado.";
+    }
+
+    return "";
+  }
+
+  function changeInvoiceStatus(invoice: Invoice, status: Status) {
+    if (status === invoice.status) return;
+
+    if (status === "Borrador" && invoice.number.trim()) {
+      return flash("Una factura ya numerada no puede volver a Borrador. Puedes marcarla como Anulada.");
+    }
+
+    if (status === "Emitida" || status === "Cobrada") {
+      const error = invoiceStatusValidationError(invoice);
+      if (error) return flash(error);
+    }
+
+    const client = clients.find((item) => item.id === invoice.clientId);
+    const wasUnnumberedIssued = !invoice.number.trim() && (status === "Emitida" || status === "Cobrada");
+
+    setInvoices((current) =>
+      current.map((item) => {
+        if (item.id !== invoice.id) return item;
+
+        return {
+          ...item,
+          status,
+          collectionDate:
+            status === "Cobrada"
+              ? (item.collectionDate || dateISO())
+              : (item.status === "Cobrada" && status === "Emitida" ? "" : item.collectionDate),
+          issuerSnapshot:
+            item.issuerSnapshot ||
+            ((status === "Emitida" || status === "Cobrada") ? { ...issuer } : undefined),
+          clientSnapshot:
+            item.clientSnapshot ||
+            ((status === "Emitida" || status === "Cobrada") && client ? { ...client } : undefined),
+          updatedAt: nowISO()
+        };
+      })
+    );
+
+    flash(
+      wasUnnumberedIssued
+        ? "Estado actualizado. La numeración definitiva se asignará al sincronizar."
+        : `Estado cambiado a ${status}.`
+    );
+  }
+
   function deleteInvoice(id: string) {
     if (!window.confirm("¿Eliminar esta factura? Esta acción no se puede deshacer.")) return;
     setInvoices((current) => current.filter((item) => item.id !== id));
@@ -1901,6 +1984,9 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               </button>
               <button className={tab === "clientes" ? "active" : ""} onClick={() => setTab("clientes")}>
                 <span>♙</span> Clientes
+              </button>
+              <button className={tab === "finanzas" ? "active" : ""} onClick={() => setTab("finanzas")}>
+                <span>⌁</span> Ingresos y gastos
               </button>
               <button className={tab === "fiscal" ? "active" : ""} onClick={() => setTab("fiscal")}>
                 <span>◫</span> Trimestrales
@@ -2639,7 +2725,19 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                               <td>{invoice.issueDate}</td>
                               <td>{invoice.collectionDate || "—"}</td>
                               <td>{client?.name || "Cliente eliminado"}</td>
-                              <td><span className={`status ${invoice.status.toLowerCase()}`}>{invoice.status}</span></td>
+                              <td>
+                                <select
+                                  className={`invoice-status-select status ${invoice.status.toLowerCase()}`}
+                                  value={invoice.status}
+                                  onChange={(e) => changeInvoiceStatus(invoice, e.target.value as Status)}
+                                  aria-label={`Cambiar estado de ${invoice.number || "factura"}`}
+                                >
+                                  <option value="Borrador">Borrador</option>
+                                  <option value="Emitida">Emitida</option>
+                                  <option value="Cobrada">Cobrada</option>
+                                  <option value="Anulada">Anulada</option>
+                                </select>
+                              </td>
                               <td className="right">
                                 <strong>{billingVisible ? currency(t.base + t.vat - t.withholding) : "•••• €"}</strong>
                               </td>
@@ -2937,6 +3035,16 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                 </div>
               </div>
             </section>
+          )}
+
+          {tab === "finanzas" && (
+            <FinancePanel
+              invoices={invoices}
+              clients={clients}
+              amountsVisible={billingVisible}
+              onToggleAmounts={() => setBillingVisible((visible) => !visible)}
+              onOpenFiscal={() => setTab("fiscal")}
+            />
           )}
 
           {tab === "fiscal" && <FiscalPanel invoices={invoices} />}
