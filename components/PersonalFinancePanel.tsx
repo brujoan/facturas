@@ -23,6 +23,7 @@ type ExpenseField =
   | "insurance"
   | "leisure"
   | "sport"
+  | "carExpense"
   | "freelanceExpense"
   | "extraExpense";
 
@@ -41,10 +42,12 @@ type AccountMonth = {
   extraIncome: number;
   extraIncomeReason: string;
   salaryReason?: string;
+  salaryDate?: string;
   monthlyPayments: number;
   insurance: number;
   leisure: number;
   sport: number;
+  carExpense: number;
   freelanceExpense: number;
   extraExpense: number;
   extraExpenseReason: string;
@@ -137,10 +140,12 @@ function blankMonth(id: string): AccountMonth {
     extraIncome: 0,
     extraIncomeReason: "",
     salaryReason: "",
+    salaryDate: "",
     monthlyPayments: 0,
     insurance: 0,
     leisure: 0,
     sport: 0,
+    carExpense: 0,
     freelanceExpense: 0,
     extraExpense: 0,
     extraExpenseReason: "",
@@ -182,6 +187,104 @@ function appendReason(current: string, next: string) {
   return `${current}; ${clean}`;
 }
 
+const breakdownFields: BreakdownField[] = [
+  "extraIncome",
+  "monthlyPayments",
+  "insurance",
+  "leisure",
+  "sport",
+  "carExpense",
+  "freelanceExpense",
+  "extraExpense"
+];
+
+function cycleMonthForDate(date: string, sourceMonths: AccountMonth[]) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date.slice(0, 7);
+
+  const salaryRows = sourceMonths
+    .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.salaryDate || ""))
+    .sort((a, b) => String(a.salaryDate).localeCompare(String(b.salaryDate)));
+
+  let matched = "";
+  for (const item of salaryRows) {
+    if (String(item.salaryDate) <= date) matched = item.id;
+    else break;
+  }
+
+  return matched || date.slice(0, 7);
+}
+
+function rebalanceDatedBreakdowns(sourceMonths: AccountMonth[]) {
+  const schedule = sourceMonths.map((item) => ({
+    ...blankMonth(item.id),
+    ...item,
+    breakdowns: { ...(item.breakdowns || {}) }
+  }));
+
+  const map = new Map<string, AccountMonth>();
+  for (const item of schedule) {
+    const next = { ...item, breakdowns: { ...(item.breakdowns || {}) } };
+    for (const field of breakdownFields) {
+      const items = next.breakdowns?.[field] || [];
+      next.breakdowns = {
+        ...(next.breakdowns || {}),
+        [field]: items.filter((entry) => !entry.date)
+      };
+    }
+    map.set(item.id, next);
+  }
+
+  for (const source of schedule) {
+    for (const field of breakdownFields) {
+      for (const entry of source.breakdowns?.[field] || []) {
+        if (!entry.date) continue;
+        const targetId = cycleMonthForDate(entry.date, schedule);
+        const target = map.get(targetId) || blankMonth(targetId);
+        const targetItems = target.breakdowns?.[field] || [];
+        map.set(targetId, {
+          ...target,
+          breakdowns: {
+            ...(target.breakdowns || {}),
+            [field]: [...targetItems, entry]
+          },
+          updatedAt: source.updatedAt || target.updatedAt
+        });
+      }
+    }
+  }
+
+  return [...map.values()].map((item) => {
+    const next = { ...item, breakdowns: { ...(item.breakdowns || {}) } };
+    for (const field of breakdownFields) {
+      const original = schedule.find((source) => source.id === item.id);
+      const originalHadBreakdown = Boolean(original?.breakdowns?.[field]?.length);
+      const items = next.breakdowns?.[field] || [];
+      if (items.length || originalHadBreakdown) {
+        next[field] = money(items.reduce((sum, entry) => sum + Number(entry.amount || 0), 0)) as never;
+      }
+    }
+    return next;
+  });
+}
+
+function dayBefore(date: string) {
+  const parsed = new Date(`${date}T12:00:00`);
+  parsed.setDate(parsed.getDate() - 1);
+  return [
+    parsed.getFullYear(),
+    String(parsed.getMonth() + 1).padStart(2, "0"),
+    String(parsed.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function shortDate(date: string) {
+  if (!date) return "";
+  return new Date(`${date}T12:00:00`).toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "short"
+  });
+}
+
 function migrateLegacy(movements: LegacyMovement[]): AccountMonth[] {
   const map = new Map<string, AccountMonth>();
 
@@ -204,6 +307,8 @@ function migrateLegacy(movements: LegacyMovement[]): AccountMonth[] {
     } else if (movement.type === "expense") {
       if (category === "Ocio") {
         row.leisure = money(row.leisure + amount);
+      } else if (category === "Coche") {
+        row.carExpense = money(row.carExpense + amount);
       } else if (category === "Autónomo") {
         row.freelanceExpense = money(row.freelanceExpense + amount);
       } else {
@@ -295,7 +400,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
           return next;
         });
 
-        setMonths(normalizedMonths);
+        setMonths(rebalanceDatedBreakdowns(normalizedMonths));
         setReady(true);
       }
     }
@@ -346,8 +451,8 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
     for (const invoice of invoices) {
       if (invoice.status !== "Cobrada") continue;
       const date = invoice.collectionDate || invoice.issueDate;
-      const monthId = date.slice(0, 7);
-      if (!/^\d{4}-\d{2}$/.test(monthId)) continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const monthId = cycleMonthForDate(date, months);
       totals.set(
         monthId,
         money((totals.get(monthId) || 0) + invoiceFreelanceIncomeWithoutVat(invoice))
@@ -355,7 +460,44 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
     }
 
     return totals;
-  }, [invoices]);
+  }, [invoices, months]);
+
+  const lastMovementDate = useMemo(() => {
+    const dates: string[] = [];
+
+    for (const item of months) {
+      if (item.salaryDate) dates.push(item.salaryDate);
+      for (const field of breakdownFields) {
+        for (const entry of item.breakdowns?.[field] || []) {
+          if (entry.date) dates.push(entry.date);
+        }
+      }
+    }
+
+    for (const invoice of invoices) {
+      if (invoice.status !== "Cobrada") continue;
+      const date = invoice.collectionDate || invoice.issueDate;
+      if (date) dates.push(date);
+    }
+
+    return dates.sort().at(-1) || "";
+  }, [months, invoices]);
+
+  const payCycleRanges = useMemo(() => {
+    const salaryRows = months
+      .filter((item) => item.salaryDate)
+      .sort((a, b) => String(a.salaryDate).localeCompare(String(b.salaryDate)));
+
+    const ranges = new Map<string, string>();
+    salaryRows.forEach((item, index) => {
+      const start = String(item.salaryDate);
+      const next = salaryRows[index + 1]?.salaryDate;
+      ranges.set(item.id, next
+        ? `${shortDate(start)} → ${shortDate(dayBefore(String(next)))}`
+        : `desde ${shortDate(start)}`);
+    });
+    return ranges;
+  }, [months]);
 
   const rows = useMemo(() => {
     return monthNames.map((name, index) => {
@@ -368,6 +510,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         stored.insurance +
         stored.leisure +
         stored.sport +
+        stored.carExpense +
         stored.freelanceExpense +
         stored.extraExpense
       );
@@ -395,6 +538,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         insurance: money(acc.insurance + row.insurance),
         leisure: money(acc.leisure + row.leisure),
         sport: money(acc.sport + row.sport),
+        carExpense: money(acc.carExpense + row.carExpense),
         freelanceExpense: money(acc.freelanceExpense + row.freelanceExpense),
         extraExpense: money(acc.extraExpense + row.extraExpense),
         totalExpense: money(acc.totalExpense + row.totalExpense),
@@ -409,6 +553,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         insurance: 0,
         leisure: 0,
         sport: 0,
+        carExpense: 0,
         freelanceExpense: 0,
         extraExpense: 0,
         totalExpense: 0,
@@ -603,8 +748,10 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         updatedAt: nowISO()
       };
 
-      if (index < 0) return [...current, next];
-      return current.map((item, itemIndex) => itemIndex === index ? next : item);
+      const updated = index < 0
+        ? [...current, next]
+        : current.map((item, itemIndex) => itemIndex === index ? next : item);
+      return rebalanceDatedBreakdowns(updated);
     });
 
     setBreakdownEditor(null);
@@ -621,20 +768,23 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
       return;
     }
 
-    const monthId = quickDate.slice(0, 7);
-    const targetYear = Number(quickDate.slice(0, 4));
-    const targetMonthIndex = Number(quickDate.slice(5, 7)) - 1;
+    let targetMonthId = quickDate.slice(0, 7);
 
     setMonths((current) => {
-      const index = current.findIndex((item) => item.id === monthId);
-      const base = index >= 0 ? current[index] : blankMonth(monthId);
+      targetMonthId = quickType === "income" && quickSection === "salary"
+        ? quickDate.slice(0, 7)
+        : cycleMonthForDate(quickDate, current);
+
+      const index = current.findIndex((item) => item.id === targetMonthId);
+      const base = index >= 0 ? current[index] : blankMonth(targetMonthId);
       let next: AccountMonth = { ...base, updatedAt: nowISO() };
 
       if (quickType === "income" && quickSection === "salary") {
         next = {
           ...next,
           salary: money(base.salary + amount),
-          salaryReason: appendReason(base.salaryReason || "", concept)
+          salaryReason: appendReason(base.salaryReason || "", concept),
+          salaryDate: quickDate
         };
       } else {
         const field = quickSection as BreakdownField;
@@ -659,10 +809,15 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         };
       }
 
-      if (index < 0) return [...current, next];
-      return current.map((item, itemIndex) => itemIndex === index ? next : item);
+      const updated = index < 0
+        ? [...current, next]
+        : current.map((item, itemIndex) => itemIndex === index ? next : item);
+
+      return rebalanceDatedBreakdowns(updated);
     });
 
+    const targetYear = Number(targetMonthId.slice(0, 4));
+    const targetMonthIndex = Number(targetMonthId.slice(5, 7)) - 1;
     setYear(targetYear);
     setQuickAmount("");
     setQuickConcept("");
@@ -736,6 +891,9 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
               Año actual
             </button>
           )}
+          <span className="accounts-last-movement">
+            Último: {lastMovementDate ? new Date(`${lastMovementDate}T12:00:00`).toLocaleDateString("es-ES") : "—"}
+          </span>
         </div>
 
         <form
@@ -779,6 +937,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                 <option value="insurance">Seguros</option>
                 <option value="leisure">Ocio</option>
                 <option value="sport">Deporte</option>
+                <option value="carExpense">Coche</option>
                 <option value="freelanceExpense">Autónomo</option>
                 <option value="extraExpense">Gasto extra</option>
               </>
@@ -818,7 +977,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
               <tr className="accounts-group-row">
                 <th rowSpan={2}>Mes</th>
                 <th colSpan={4}>Ingresos</th>
-                <th colSpan={7}>Gastos</th>
+                <th colSpan={8}>Gastos</th>
                 <th rowSpan={2}>Ahorro</th>
               </tr>
               <tr>
@@ -830,6 +989,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                 <th>Seg.</th>
                 <th>Ocio</th>
                 <th>Dep.</th>
+                <th>Coche</th>
                 <th>Autón.</th>
                 <th>G. extra</th>
                 <th>G. total</th>
@@ -838,7 +998,10 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className={row.id === new Date().toISOString().slice(0, 7) ? "current-month" : ""}>
-                  <th>{row.name}</th>
+                  <th>
+                    <span>{row.name}</span>
+                    {payCycleRanges.get(row.id) && <small>{payCycleRanges.get(row.id)}</small>}
+                  </th>
                   <td>{amountCell(row.id, "salary", row.salary, `Nómina de ${row.name}`)}</td>
                   <td className="accounts-auto-cell" title="Facturas cobradas, sin IVA">
                     <strong>{shown(row.freelance)}</strong>
@@ -850,6 +1013,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                   <td>{breakdownCell(row.id, row.name, "insurance", "Seguros", row.insurance)}</td>
                   <td>{breakdownCell(row.id, row.name, "leisure", "Ocio", row.leisure)}</td>
                   <td>{breakdownCell(row.id, row.name, "sport", "Deporte", row.sport)}</td>
+                  <td>{breakdownCell(row.id, row.name, "carExpense", "Coche", row.carExpense)}</td>
                   <td>{breakdownCell(row.id, row.name, "freelanceExpense", "Autónomo", row.freelanceExpense)}</td>
                   <td>{breakdownCell(row.id, row.name, "extraExpense", "Gasto extra", row.extraExpense)}</td>
                   <td className="accounts-total expense">{shown(row.totalExpense)}</td>
@@ -869,6 +1033,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                 <td>{shown(totals.insurance)}</td>
                 <td>{shown(totals.leisure)}</td>
                 <td>{shown(totals.sport)}</td>
+                <td>{shown(totals.carExpense)}</td>
                 <td>{shown(totals.freelanceExpense)}</td>
                 <td>{shown(totals.extraExpense)}</td>
                 <td>{shown(totals.totalExpense)}</td>
@@ -886,7 +1051,10 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
             className={`accounts-mobile-month ${row.id === new Date().toISOString().slice(0, 7) ? "current-month" : ""}`}
           >
             <header>
-              <strong>{row.name}</strong>
+              <div>
+                <strong>{row.name}</strong>
+                {payCycleRanges.get(row.id) && <small>{payCycleRanges.get(row.id)}</small>}
+              </div>
               <span className={row.savings < 0 ? "negative" : ""}>
                 Ahorro {shown(row.savings)}
               </span>
@@ -912,6 +1080,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                 <label>Seguros{breakdownCell(row.id, row.name, "insurance", "Seguros", row.insurance)}</label>
                 <label>Ocio{breakdownCell(row.id, row.name, "leisure", "Ocio", row.leisure)}</label>
                 <label>Deporte{breakdownCell(row.id, row.name, "sport", "Deporte", row.sport)}</label>
+                <label>Coche{breakdownCell(row.id, row.name, "carExpense", "Coche", row.carExpense)}</label>
                 <label>Autónomo{breakdownCell(row.id, row.name, "freelanceExpense", "Autónomo", row.freelanceExpense)}</label>
                 <label>Gasto extra{breakdownCell(row.id, row.name, "extraExpense", "Gasto extra", row.extraExpense)}</label>
               </div>
@@ -932,7 +1101,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
       </div>
 
       <p className="accounts-note">
-        Ingreso Autónomo = facturas cobradas menos IVA. Pulsa ≡ en Ingreso extra o cualquier gasto para ver su desglose.
+        Los movimientos se asignan al ciclo abierto por la última nómina cobrada. Ingreso Autónomo = facturas cobradas menos IVA.
       </p>
 
       {breakdownEditor && (
