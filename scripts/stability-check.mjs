@@ -108,5 +108,14 @@ assert(personal.includes("accounts-mobile-list") && personal.includes("accounts-
 assert(styles.includes("/* v0.14.1 · Cuentas sin scroll horizontal */"), "Cuentas debe incluir el ajuste de ancho completo.");
 assert(styles.includes(".accounts-table-scroll {\n  overflow-x: hidden;"), "La tabla de Cuentas no debe requerir desplazamiento horizontal en escritorio.");
 assert(styles.includes("@media (max-width: 900px)") && styles.includes(".accounts-table-panel {\n    display: none;"), "En pantallas estrechas la tabla debe sustituirse por fichas legibles.");
+assert(personal.includes("invoiceFreelanceIncomeWithoutVat"), "El ingreso de autónomo en Cuentas debe excluir el IVA.");
+assert(personal.includes("base - withholding"), "El ingreso de autónomo sin IVA debe conservar la retención aplicada.");
+assert(personal.includes("freelanceExpense"), "Cuentas debe incluir Autónomo como categoría de gasto.");
+assert(personal.includes("breakdowns?: Partial<Record<ExpenseField, BreakdownItem[]>>"), "Los gastos deben poder guardar un desglose por conceptos.");
+assert(personal.includes("openBreakdown") && personal.includes("Guardar desglose"), "La tabla debe permitir abrir y guardar el detalle de cada gasto.");
+assert(personal.includes('colSpan={8}>Gastos'), "La tabla debe incluir la nueva columna de gasto Autónomo.");
+assert(styles.includes("/* v0.15.0 · Cuentas legibles y gastos desglosables */"), "Cuentas debe aplicar la tipografía ampliada y el modal de desglose.");
+assert(styles.includes(".accounts-breakdown-modal") && styles.includes(".accounts-breakdown-button"), "El desglose de gastos debe tener interfaz propia.");
+
 
 console.log("Stability checks OK");

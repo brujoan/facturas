@@ -18,6 +18,20 @@ type Invoice = {
   lines: InvoiceLine[];
 };
 
+type ExpenseField =
+  | "monthlyPayments"
+  | "insurance"
+  | "leisure"
+  | "sport"
+  | "freelanceExpense"
+  | "extraExpense";
+
+type BreakdownItem = {
+  id: string;
+  concept: string;
+  amount: number;
+};
+
 type AccountMonth = {
   id: string;
   salary: number;
@@ -27,8 +41,10 @@ type AccountMonth = {
   insurance: number;
   leisure: number;
   sport: number;
+  freelanceExpense: number;
   extraExpense: number;
   extraExpenseReason: string;
+  breakdowns?: Partial<Record<ExpenseField, BreakdownItem[]>>;
   updatedAt?: string;
 };
 
@@ -45,6 +61,14 @@ type Props = {
   invoices: Invoice[];
   amountsVisible: boolean;
   onToggleAmounts: () => void;
+};
+
+type BreakdownEditor = {
+  monthId: string;
+  monthName: string;
+  field: ExpenseField;
+  title: string;
+  items: BreakdownItem[];
 };
 
 const MONTHS_KEY = "facturas_personal_account_months_v2";
@@ -73,6 +97,10 @@ function currentYear() {
   return new Date().getFullYear();
 }
 
+function uid() {
+  return crypto.randomUUID();
+}
+
 function money(value: number) {
   return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 }
@@ -99,8 +127,10 @@ function blankMonth(id: string): AccountMonth {
     insurance: 0,
     leisure: 0,
     sport: 0,
+    freelanceExpense: 0,
     extraExpense: 0,
-    extraExpenseReason: ""
+    extraExpenseReason: "",
+    breakdowns: {}
   };
 }
 
@@ -122,13 +152,11 @@ function mergeById(remote: AccountMonth[], local: AccountMonth[]) {
   return [...map.values()];
 }
 
-function invoiceCash(invoice: Invoice) {
+function invoiceFreelanceIncomeWithoutVat(invoice: Invoice) {
   return money(invoice.lines.reduce((sum, line) => {
     const base = Number(line.quantity || 0) * Number(line.unitPrice || 0);
-    return sum +
-      base +
-      base * (Number(line.vat || 0) / 100) -
-      base * (Number(line.withholding || 0) / 100);
+    const withholding = base * (Number(line.withholding || 0) / 100);
+    return sum + base - withholding;
   }, 0));
 }
 
@@ -162,6 +190,8 @@ function migrateLegacy(movements: LegacyMovement[]): AccountMonth[] {
     } else if (movement.type === "expense") {
       if (category === "Ocio") {
         row.leisure = money(row.leisure + amount);
+      } else if (category === "Autónomo") {
+        row.freelanceExpense = money(row.freelanceExpense + amount);
       } else {
         row.extraExpense = money(row.extraExpense + amount);
         row.extraExpenseReason = appendReason(row.extraExpenseReason, concept || category);
@@ -180,6 +210,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
   const [months, setMonths] = useState<AccountMonth[]>([]);
   const [ready, setReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"local" | "saving" | "saved" | "error">("local");
+  const [breakdownEditor, setBreakdownEditor] = useState<BreakdownEditor | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,7 +300,10 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
       const date = invoice.collectionDate || invoice.issueDate;
       const monthId = date.slice(0, 7);
       if (!/^\d{4}-\d{2}$/.test(monthId)) continue;
-      totals.set(monthId, money((totals.get(monthId) || 0) + invoiceCash(invoice)));
+      totals.set(
+        monthId,
+        money((totals.get(monthId) || 0) + invoiceFreelanceIncomeWithoutVat(invoice))
+      );
     }
 
     return totals;
@@ -286,6 +320,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         stored.insurance +
         stored.leisure +
         stored.sport +
+        stored.freelanceExpense +
         stored.extraExpense
       );
       const savings = money(totalIncome - totalExpense);
@@ -312,6 +347,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         insurance: money(acc.insurance + row.insurance),
         leisure: money(acc.leisure + row.leisure),
         sport: money(acc.sport + row.sport),
+        freelanceExpense: money(acc.freelanceExpense + row.freelanceExpense),
         extraExpense: money(acc.extraExpense + row.extraExpense),
         totalExpense: money(acc.totalExpense + row.totalExpense),
         savings: money(acc.savings + row.savings)
@@ -325,6 +361,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         insurance: 0,
         leisure: 0,
         sport: 0,
+        freelanceExpense: 0,
         extraExpense: 0,
         totalExpense: 0,
         savings: 0
@@ -351,9 +388,28 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
     });
   }
 
+  function setExpenseAmount(monthId: string, field: ExpenseField, value: number) {
+    setMonths((current) => {
+      const index = current.findIndex((item) => item.id === monthId);
+      const base = index >= 0 ? current[index] : blankMonth(monthId);
+      const nextBreakdowns = { ...(base.breakdowns || {}) };
+      delete nextBreakdowns[field];
+
+      const next: AccountMonth = {
+        ...base,
+        [field]: value,
+        breakdowns: nextBreakdowns,
+        updatedAt: nowISO()
+      };
+
+      if (index < 0) return [...current, next];
+      return current.map((item, itemIndex) => itemIndex === index ? next : item);
+    });
+  }
+
   function amountCell(
     monthId: string,
-    field: "salary" | "extraIncome" | "monthlyPayments" | "insurance" | "leisure" | "sport" | "extraExpense",
+    field: "salary" | "extraIncome",
     value: number,
     label: string
   ) {
@@ -376,6 +432,136 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
     );
   }
 
+  function openBreakdown(
+    monthId: string,
+    monthName: string,
+    field: ExpenseField,
+    title: string,
+    currentValue: number
+  ) {
+    const stored = months.find((item) => item.id === monthId);
+    const existing = stored?.breakdowns?.[field] || [];
+    const items = existing.length
+      ? existing.map((item) => ({ ...item }))
+      : currentValue > 0
+        ? [{ id: uid(), concept: "Sin desglosar", amount: currentValue }]
+        : [{ id: uid(), concept: "", amount: 0 }];
+
+    setBreakdownEditor({
+      monthId,
+      monthName,
+      field,
+      title,
+      items
+    });
+  }
+
+  function expenseCell(
+    monthId: string,
+    monthName: string,
+    field: ExpenseField,
+    title: string,
+    value: number
+  ) {
+    const stored = months.find((item) => item.id === monthId);
+    const hasBreakdown = Boolean(stored?.breakdowns?.[field]?.length);
+
+    return (
+      <div className="accounts-expense-cell">
+        {amountsVisible ? (
+          <input
+            className="accounts-money-input"
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={value || ""}
+            placeholder="0"
+            aria-label={`${title} de ${monthName}`}
+            onChange={(e) => setExpenseAmount(monthId, field, Number(e.target.value || 0))}
+          />
+        ) : (
+          <span className="accounts-hidden">••••</span>
+        )}
+        <button
+          type="button"
+          className={`accounts-breakdown-button ${hasBreakdown ? "active" : ""}`}
+          onClick={() => openBreakdown(monthId, monthName, field, title, value)}
+          aria-label={`Desglosar ${title} de ${monthName}`}
+          title="Ver o editar desglose"
+        >
+          ≡
+        </button>
+      </div>
+    );
+  }
+
+  function updateBreakdownItem(id: string, patch: Partial<BreakdownItem>) {
+    setBreakdownEditor((current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((item) => item.id === id ? { ...item, ...patch } : item)
+          }
+        : current
+    );
+  }
+
+  function addBreakdownItem() {
+    setBreakdownEditor((current) =>
+      current
+        ? {
+            ...current,
+            items: [...current.items, { id: uid(), concept: "", amount: 0 }]
+          }
+        : current
+    );
+  }
+
+  function removeBreakdownItem(id: string) {
+    setBreakdownEditor((current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.filter((item) => item.id !== id)
+          }
+        : current
+    );
+  }
+
+  function saveBreakdown() {
+    if (!breakdownEditor) return;
+
+    const items = breakdownEditor.items
+      .map((item) => ({
+        ...item,
+        concept: item.concept.trim(),
+        amount: money(Number(item.amount || 0))
+      }))
+      .filter((item) => item.concept || item.amount > 0);
+
+    const total = money(items.reduce((sum, item) => sum + item.amount, 0));
+
+    setMonths((current) => {
+      const index = current.findIndex((item) => item.id === breakdownEditor.monthId);
+      const base = index >= 0 ? current[index] : blankMonth(breakdownEditor.monthId);
+      const next: AccountMonth = {
+        ...base,
+        [breakdownEditor.field]: total,
+        breakdowns: {
+          ...(base.breakdowns || {}),
+          [breakdownEditor.field]: items
+        },
+        updatedAt: nowISO()
+      };
+
+      if (index < 0) return [...current, next];
+      return current.map((item, itemIndex) => itemIndex === index ? next : item);
+    });
+
+    setBreakdownEditor(null);
+  }
+
   function shown(value: number) {
     return amountsVisible ? currency(value) : "•••• €";
   }
@@ -383,6 +569,10 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
   if (!ready) {
     return <div className="panel">Cargando tus cuentas…</div>;
   }
+
+  const breakdownTotal = breakdownEditor
+    ? money(breakdownEditor.items.reduce((sum, item) => sum + Number(item.amount || 0), 0))
+    : 0;
 
   return (
     <section className="accounts-ledger-page">
@@ -446,22 +636,23 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
               <tr className="accounts-group-row">
                 <th rowSpan={2}>Mes</th>
                 <th colSpan={5}>Ingresos</th>
-                <th colSpan={7}>Gastos</th>
+                <th colSpan={8}>Gastos</th>
                 <th rowSpan={2}>Ahorro</th>
               </tr>
               <tr>
-                <th>Nómina</th>
-                <th>Autónomo</th>
-                <th>Ingreso extra</th>
-                <th className="accounts-reason-col">Motivo ingreso extra</th>
-                <th>Ingreso total</th>
-                <th>Mensualidades</th>
-                <th>Seguros</th>
+                <th>Nóm.</th>
+                <th>Autón.</th>
+                <th>Ing. extra</th>
+                <th className="accounts-reason-col">Motivo ing.</th>
+                <th>Ing. total</th>
+                <th>Mens.</th>
+                <th>Seg.</th>
                 <th>Ocio</th>
-                <th>Deporte</th>
-                <th>Gasto extra</th>
-                <th className="accounts-reason-col">Motivo gasto extra</th>
-                <th>Gasto total</th>
+                <th>Dep.</th>
+                <th>Autón.</th>
+                <th>G. extra</th>
+                <th className="accounts-reason-col">Motivo g.</th>
+                <th>G. total</th>
               </tr>
             </thead>
             <tbody>
@@ -469,9 +660,9 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                 <tr key={row.id} className={row.id === new Date().toISOString().slice(0, 7) ? "current-month" : ""}>
                   <th>{row.name}</th>
                   <td>{amountCell(row.id, "salary", row.salary, `Nómina de ${row.name}`)}</td>
-                  <td className="accounts-auto-cell" title="Calculado automáticamente desde facturas cobradas">
+                  <td className="accounts-auto-cell" title="Facturas cobradas, sin IVA">
                     <strong>{shown(row.freelance)}</strong>
-                    <small>auto</small>
+                    <small>sin IVA</small>
                   </td>
                   <td>{amountCell(row.id, "extraIncome", row.extraIncome, `Ingreso extra de ${row.name}`)}</td>
                   <td className="accounts-reason-cell">
@@ -484,11 +675,12 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                     />
                   </td>
                   <td className="accounts-total income">{shown(row.totalIncome)}</td>
-                  <td>{amountCell(row.id, "monthlyPayments", row.monthlyPayments, `Mensualidades de ${row.name}`)}</td>
-                  <td>{amountCell(row.id, "insurance", row.insurance, `Seguros de ${row.name}`)}</td>
-                  <td>{amountCell(row.id, "leisure", row.leisure, `Ocio de ${row.name}`)}</td>
-                  <td>{amountCell(row.id, "sport", row.sport, `Deporte de ${row.name}`)}</td>
-                  <td>{amountCell(row.id, "extraExpense", row.extraExpense, `Gasto extra de ${row.name}`)}</td>
+                  <td>{expenseCell(row.id, row.name, "monthlyPayments", "Mensualidades", row.monthlyPayments)}</td>
+                  <td>{expenseCell(row.id, row.name, "insurance", "Seguros", row.insurance)}</td>
+                  <td>{expenseCell(row.id, row.name, "leisure", "Ocio", row.leisure)}</td>
+                  <td>{expenseCell(row.id, row.name, "sport", "Deporte", row.sport)}</td>
+                  <td>{expenseCell(row.id, row.name, "freelanceExpense", "Autónomo", row.freelanceExpense)}</td>
+                  <td>{expenseCell(row.id, row.name, "extraExpense", "Gasto extra", row.extraExpense)}</td>
                   <td className="accounts-reason-cell">
                     <input
                       type="text"
@@ -516,6 +708,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                 <td>{shown(totals.insurance)}</td>
                 <td>{shown(totals.leisure)}</td>
                 <td>{shown(totals.sport)}</td>
+                <td>{shown(totals.freelanceExpense)}</td>
                 <td>{shown(totals.extraExpense)}</td>
                 <td>—</td>
                 <td>{shown(totals.totalExpense)}</td>
@@ -543,7 +736,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
               <h3>Ingresos</h3>
               <div className="accounts-mobile-grid">
                 <label>Nómina{amountCell(row.id, "salary", row.salary, `Nómina de ${row.name}`)}</label>
-                <label className="accounts-mobile-auto">Autónomo<span>{shown(row.freelance)}</span></label>
+                <label className="accounts-mobile-auto">Autónomo <small>sin IVA</small><span>{shown(row.freelance)}</span></label>
                 <label>Ingreso extra{amountCell(row.id, "extraIncome", row.extraIncome, `Ingreso extra de ${row.name}`)}</label>
                 <label className="wide">
                   Motivo ingreso extra
@@ -564,11 +757,12 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
             <div className="accounts-mobile-section">
               <h3>Gastos</h3>
               <div className="accounts-mobile-grid">
-                <label>Mensualidades{amountCell(row.id, "monthlyPayments", row.monthlyPayments, `Mensualidades de ${row.name}`)}</label>
-                <label>Seguros{amountCell(row.id, "insurance", row.insurance, `Seguros de ${row.name}`)}</label>
-                <label>Ocio{amountCell(row.id, "leisure", row.leisure, `Ocio de ${row.name}`)}</label>
-                <label>Deporte{amountCell(row.id, "sport", row.sport, `Deporte de ${row.name}`)}</label>
-                <label>Gasto extra{amountCell(row.id, "extraExpense", row.extraExpense, `Gasto extra de ${row.name}`)}</label>
+                <label>Mensualidades{expenseCell(row.id, row.name, "monthlyPayments", "Mensualidades", row.monthlyPayments)}</label>
+                <label>Seguros{expenseCell(row.id, row.name, "insurance", "Seguros", row.insurance)}</label>
+                <label>Ocio{expenseCell(row.id, row.name, "leisure", "Ocio", row.leisure)}</label>
+                <label>Deporte{expenseCell(row.id, row.name, "sport", "Deporte", row.sport)}</label>
+                <label>Autónomo{expenseCell(row.id, row.name, "freelanceExpense", "Autónomo", row.freelanceExpense)}</label>
+                <label>Gasto extra{expenseCell(row.id, row.name, "extraExpense", "Gasto extra", row.extraExpense)}</label>
                 <label className="wide">
                   Motivo gasto extra
                   <input
@@ -596,8 +790,72 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
       </div>
 
       <p className="accounts-note">
-        Autónomo se calcula con las facturas marcadas como Cobradas y su fecha de cobro. El resto de celdas se edita directamente.
+        Ingreso Autónomo = facturas cobradas menos IVA. En los gastos, pulsa ≡ para ver o editar de qué se compone cada importe.
       </p>
+
+      {breakdownEditor && (
+        <div className="accounts-breakdown-overlay" onMouseDown={() => setBreakdownEditor(null)}>
+          <section
+            className="accounts-breakdown-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Desglose de ${breakdownEditor.title}`}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">{breakdownEditor.monthName} · {year}</p>
+                <h2>{breakdownEditor.title}</h2>
+              </div>
+              <button className="accounts-breakdown-close" onClick={() => setBreakdownEditor(null)} aria-label="Cerrar">×</button>
+            </header>
+
+            <div className="accounts-breakdown-list">
+              {breakdownEditor.items.map((item) => (
+                <div className="accounts-breakdown-row" key={item.id}>
+                  <input
+                    type="text"
+                    value={item.concept}
+                    placeholder="Concepto"
+                    aria-label="Concepto"
+                    onChange={(e) => updateBreakdownItem(item.id, { concept: e.target.value })}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={item.amount || ""}
+                    placeholder="0"
+                    aria-label="Importe"
+                    onChange={(e) => updateBreakdownItem(item.id, { amount: Number(e.target.value || 0) })}
+                  />
+                  <button
+                    className="accounts-breakdown-delete"
+                    onClick={() => removeBreakdownItem(item.id)}
+                    aria-label="Eliminar concepto"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button className="accounts-breakdown-add" onClick={addBreakdownItem}>
+              + Añadir concepto
+            </button>
+
+            <footer>
+              <div>
+                <span>Total</span>
+                <strong>{currency(breakdownTotal)}</strong>
+              </div>
+              <button className="button secondary" onClick={() => setBreakdownEditor(null)}>Cancelar</button>
+              <button className="button primary" onClick={saveBreakdown}>Guardar desglose</button>
+            </footer>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

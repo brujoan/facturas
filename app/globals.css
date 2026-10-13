@@ -5106,3 +5106,294 @@ h3 { margin-bottom: 8px; }
     font-size: 13px;
   }
 }
+
+
+/* v0.15.0 · Cuentas legibles y gastos desglosables */
+.accounts-table th,
+.accounts-table td {
+  padding: 7px 4px;
+  font-size: 12px;
+}
+
+.accounts-table thead th {
+  font-size: 11.5px;
+  line-height: 1.15;
+}
+
+.accounts-table .accounts-group-row th {
+  font-size: 11.5px;
+}
+
+.accounts-table tbody th {
+  font-size: 12px;
+}
+
+.accounts-table thead th:first-child,
+.accounts-table tbody th {
+  width: 5.8%;
+}
+
+.accounts-table .accounts-reason-col,
+.accounts-table .accounts-reason-cell {
+  width: 8.6%;
+}
+
+.accounts-table input {
+  height: 34px;
+  padding: 5px 4px;
+  font-size: 12px;
+}
+
+.accounts-auto-cell strong,
+.accounts-total,
+.accounts-savings,
+.accounts-year-total td {
+  font-size: 12px;
+}
+
+.accounts-auto-cell small {
+  font-size: 8.5px;
+  line-height: 1.05;
+}
+
+.accounts-expense-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 23px;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.accounts-expense-cell .accounts-money-input {
+  min-width: 0;
+}
+
+.accounts-breakdown-button {
+  width: 23px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #dce1e7;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #667085;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.accounts-breakdown-button:hover,
+.accounts-breakdown-button.active {
+  border-color: #aab4c1;
+  background: #eef2f6;
+  color: #111827;
+}
+
+.accounts-breakdown-button.active {
+  box-shadow: inset 0 0 0 1px #c4ccd6;
+}
+
+.accounts-breakdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(17, 24, 39, .42);
+  backdrop-filter: blur(3px);
+}
+
+.accounts-breakdown-modal {
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+}
+
+.accounts-breakdown-modal > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.accounts-breakdown-modal > header h2 {
+  margin: 2px 0 0;
+  font-size: 22px;
+}
+
+.accounts-breakdown-close {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: #f2f4f7;
+  color: #475467;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.accounts-breakdown-list {
+  display: grid;
+  gap: 8px;
+  padding: 16px 20px 10px;
+}
+
+.accounts-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px 34px;
+  gap: 8px;
+  align-items: center;
+}
+
+.accounts-breakdown-row input {
+  height: 40px;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.accounts-breakdown-row input[type="number"] {
+  text-align: right;
+}
+
+.accounts-breakdown-delete {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: #fff1f1;
+  color: #b42318;
+  font-size: 18px;
+}
+
+.accounts-breakdown-add {
+  margin: 0 20px 14px;
+  padding: 8px 10px;
+  border: 1px dashed #b8c2ce;
+  border-radius: 9px;
+  background: #fafbfc;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.accounts-breakdown-modal > footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.accounts-breakdown-modal > footer > div span,
+.accounts-breakdown-modal > footer > div strong {
+  display: block;
+}
+
+.accounts-breakdown-modal > footer > div span {
+  color: #667085;
+  font-size: 11px;
+}
+
+.accounts-breakdown-modal > footer > div strong {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.accounts-note {
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .accounts-mobile-month > header > strong {
+    font-size: 17px;
+  }
+
+  .accounts-mobile-month > header > span {
+    font-size: 14px;
+  }
+
+  .accounts-mobile-section h3 {
+    font-size: 14px;
+  }
+
+  .accounts-mobile-grid label {
+    font-size: 13px;
+  }
+
+  .accounts-mobile-grid label > small {
+    font-size: 10px;
+  }
+
+  .accounts-mobile-grid input {
+    height: 42px;
+    font-size: 16px;
+  }
+
+  .accounts-mobile-auto span {
+    min-height: 42px;
+    font-size: 16px;
+  }
+
+  .accounts-mobile-total {
+    font-size: 14px;
+  }
+
+  .accounts-mobile-total strong {
+    font-size: 16px;
+  }
+
+  .accounts-expense-cell {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 5px;
+  }
+
+  .accounts-breakdown-button {
+    width: 34px;
+    height: 42px;
+    font-size: 18px;
+  }
+
+  .accounts-note {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 520px) {
+  .accounts-breakdown-overlay {
+    align-items: end;
+    padding: 0;
+  }
+
+  .accounts-breakdown-modal {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .accounts-breakdown-row {
+    grid-template-columns: minmax(0, 1fr) 100px 32px;
+    gap: 6px;
+  }
+
+  .accounts-breakdown-modal > footer {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .accounts-breakdown-modal > footer > div {
+    grid-column: 1 / -1;
+  }
+
+  .accounts-breakdown-modal > footer .button {
+    width: 100%;
+  }
+}
