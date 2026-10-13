@@ -6045,3 +6045,21 @@ h3 { margin-bottom: 8px; }
     padding-bottom: 12px;
   }
 }
+
+
+/* v0.18.3 · Fecha de nómina obligatoria para ciclos */
+.accounts-cycle-date-button.missing {
+  color: #b54708;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.accounts-cycle-date-button.missing:hover,
+.accounts-cycle-date-button.missing:focus-visible {
+  color: #93370d;
+  text-decoration: underline;
+}
+
+.accounts-table tbody tr:has(.accounts-cycle-date-button.missing) > th {
+  background: #fff7ed;
+}

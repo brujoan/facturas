@@ -152,6 +152,15 @@ assert(personal.includes('if (date.startsWith("2026-08")) return "2026-09"'), "U
 assert(personal.includes("normalize2026OpeningCycle") && personal.includes('salaryDate?.startsWith("2026-08")'), "Los datos ya guardados con la primera nómina en agosto deben migrarse a septiembre.");
 assert(personal.includes("const sourceId = salaryDateEditor.monthId") && !personal.includes("const targetId = salaryDateEditor.date.slice(0, 7)"), "Editar la fecha de nómina no debe moverla a otra fila.");
 assert(personal.includes("salaryMonthForDate(quickDate)"), "El alta rápida de nómina debe respetar la excepción inicial de septiembre de 2026.");
+assert(personal.includes("onBlur={(e) =>") && personal.includes("!stored?.salaryDate") && personal.includes("setSalaryDateEditor"), "Introducir una nómina directamente debe pedir su fecha si falta.");
+assert(personal.includes("missingSalaryCycle") && personal.includes("Falta fecha de nómina en"), "No se deben guardar movimientos en un ciclo anterior si existe una nómina posterior sin fecha.");
+assert(personal.includes("⚠ Falta fecha") && styles.includes(".accounts-cycle-date-button.missing"), "Las nóminas sin fecha deben quedar claramente marcadas en la interfaz.");
+assert(personal.includes("última nómina con fecha"), "La ayuda de Cuentas debe explicar que la fecha de nómina es necesaria para abrir el ciclo.");
+assert(personal.includes("onBlur={(e) =>") && personal.includes("!stored?.salaryDate") && personal.includes("setSalaryDateEditor"), "Introducir una nómina directamente debe pedir su fecha si falta.");
+assert(personal.includes("missingSalaryCycle") && personal.includes("Falta fecha de nómina en"), "No se deben guardar movimientos en un ciclo anterior si existe una nómina posterior sin fecha.");
+assert(personal.includes('"⚠ Falta fecha"') && styles.includes(".accounts-cycle-date-button.missing"), "Las nóminas sin fecha deben quedar claramente marcadas en la interfaz.");
+assert(personal.includes("Los movimientos se asignan al ciclo abierto por la última nómina con fecha"), "La ayuda de Cuentas debe explicar que la fecha de nómina es necesaria para abrir el ciclo.");
+
 
 
 

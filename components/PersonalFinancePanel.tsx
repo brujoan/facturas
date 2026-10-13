@@ -326,6 +326,11 @@ function shortDate(date: string) {
   });
 }
 
+function monthNameFromId(monthId: string) {
+  const monthIndex = Number(monthId.slice(5, 7)) - 1;
+  return monthNames[monthIndex] || monthId;
+}
+
 function migrateLegacy(movements: LegacyMovement[]): AccountMonth[] {
   const map = new Map<string, AccountMonth>();
 
@@ -720,6 +725,17 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
         placeholder="0"
         aria-label={label}
         onChange={(e) => setField(monthId, field, Number(e.target.value || 0))}
+        onBlur={(e) => {
+          const nextValue = Number(e.target.value || 0);
+          const stored = months.find((item) => item.id === monthId);
+          if (nextValue > 0 && !stored?.salaryDate) {
+            setSalaryDateEditor({
+              monthId,
+              monthName: monthNameFromId(monthId),
+              date: ""
+            });
+          }
+        }}
       />
     );
   }
@@ -889,6 +905,24 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
       setQuickNotice("Falta fecha, importe o concepto");
       window.setTimeout(() => setQuickNotice(""), 1800);
       return;
+    }
+
+    if (!(quickType === "income" && quickSection === "salary")) {
+      const movementMonth = quickDate.slice(0, 7);
+      const missingSalaryCycle = months
+        .filter((item) => item.salary > 0 && !item.salaryDate && item.id <= movementMonth)
+        .sort((a, b) => b.id.localeCompare(a.id))[0];
+
+      if (missingSalaryCycle) {
+        setQuickNotice(`Falta fecha de nómina en ${monthNameFromId(missingSalaryCycle.id)}`);
+        setSalaryDateEditor({
+          monthId: missingSalaryCycle.id,
+          monthName: monthNameFromId(missingSalaryCycle.id),
+          date: ""
+        });
+        window.setTimeout(() => setQuickNotice(""), 2400);
+        return;
+      }
     }
 
     const targetMonthId = quickType === "income" && quickSection === "salary"
@@ -1141,11 +1175,13 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
                     {(row.salary || row.salaryDate) && (
                       <button
                         type="button"
-                        className="accounts-cycle-date-button"
+                        className={`accounts-cycle-date-button ${row.salary > 0 && !row.salaryDate ? "missing" : ""}`}
                         onClick={() => setSalaryDateEditor({ monthId: row.id, monthName: row.name, date: row.salaryDate || "" })}
                         title="Cambiar fecha de nómina"
                       >
-                        {payCycleRanges.get(row.id) || (row.salaryDate ? shortDate(row.salaryDate) : "Fecha nómina")} · editar
+                        {row.salary > 0 && !row.salaryDate
+                          ? "⚠ Falta fecha"
+                          : `${payCycleRanges.get(row.id) || (row.salaryDate ? shortDate(row.salaryDate) : "Fecha nómina")} · editar`}
                       </button>
                     )}
                   </th>
@@ -1228,10 +1264,12 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
                 {(row.salary || row.salaryDate) && (
                   <button
                     type="button"
-                    className="accounts-cycle-date-button"
+                    className={`accounts-cycle-date-button ${row.salary > 0 && !row.salaryDate ? "missing" : ""}`}
                     onClick={() => setSalaryDateEditor({ monthId: row.id, monthName: row.name, date: row.salaryDate || "" })}
                   >
-                    {payCycleRanges.get(row.id) || (row.salaryDate ? shortDate(row.salaryDate) : "Fecha nómina")} · editar
+                    {row.salary > 0 && !row.salaryDate
+                      ? "⚠ Falta fecha"
+                      : `${payCycleRanges.get(row.id) || (row.salaryDate ? shortDate(row.salaryDate) : "Fecha nómina")} · editar`}
                   </button>
                 )}
               </div>
@@ -1287,7 +1325,7 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
       </div>
 
       <p className="accounts-note">
-        Los movimientos se asignan al ciclo abierto por la última nómina cobrada. Autónomo se registra manualmente al cobrarlo.
+        Los movimientos se asignan al ciclo abierto por la última nómina con fecha. Si una nómina no tiene fecha, primero hay que indicarla para cerrar el ciclo anterior.
       </p>
 
       {salaryDateEditor && (
