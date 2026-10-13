@@ -148,6 +148,11 @@ assert(personal.includes("Ahorros anteriores") && personal.includes("accounts-op
 assert(personal.includes("minimumFractionDigits: 0") && personal.includes("shownRounded"), "TOTAL y MEDIA deben mostrarse sin céntimos.");
 assert(personal.includes("<th>Seguro</th>") && personal.includes("<th>Deport.</th>") && personal.includes("<th>Otros</th>") && personal.includes("<th>Total</th>"), "Las cabeceras de gastos deben usar las abreviaciones solicitadas.");
 assert(styles.includes("/* v0.18.1 · Inicio 2026 y totales compactos */"), "El saldo inicial de 2026 debe tener estilos propios.");
+assert(personal.includes('if (date.startsWith("2026-08")) return "2026-09"'), "Una nómina cobrada en agosto de 2026 debe abrir el ciclo de septiembre.");
+assert(personal.includes("normalize2026OpeningCycle") && personal.includes('salaryDate?.startsWith("2026-08")'), "Los datos ya guardados con la primera nómina en agosto deben migrarse a septiembre.");
+assert(personal.includes("const sourceId = salaryDateEditor.monthId") && !personal.includes("const targetId = salaryDateEditor.date.slice(0, 7)"), "Editar la fecha de nómina no debe moverla a otra fila.");
+assert(personal.includes("salaryMonthForDate(quickDate)"), "El alta rápida de nómina debe respetar la excepción inicial de septiembre de 2026.");
+
 
 
 
