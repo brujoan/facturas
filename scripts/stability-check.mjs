@@ -94,14 +94,15 @@ assert(styles.includes(".finance-kpis") && styles.includes(".invoice-status-sele
 assert(app.includes('tab === "cuentas"'), "La navegación debe incluir el apartado personal Cuentas.");
 assert(app.includes("nav-group-toggle") && app.includes("Autónomo"), "Los apartados profesionales deben agruparse en el desplegable Autónomo.");
 assert(personal.includes("Finanzas personales") && personal.includes("<h1>Cuentas</h1>"), "Cuentas debe tener una vista personal independiente.");
-assert(personal.includes('invoice.status === "Cobrada"'), "Las facturas cobradas deben importarse automáticamente como ingresos de autónomo.");
-assert(personal.includes('category: "Autónomo"'), "Los ingresos automáticos de facturas deben clasificarse como Autónomo.");
-assert(personal.includes("Repetir cada mes") && personal.includes("materializeRecurring"), "Cuentas debe soportar ingresos y gastos mensuales recurrentes.");
-assert(personal.includes("Nómina") && personal.includes("Ocio") && personal.includes("Vivienda"), "Cuentas debe incluir categorías personales básicas.");
-assert(personal.includes('fetch("/api/personal"'), "Cuentas debe sincronizar sus movimientos con la API personal.");
-assert(database.includes('"default" | "fiscal" | "personal"'), "La sincronización debe admitir el ámbito personal.");
-assert(edge.includes('scope === "personal"'), "Supabase debe fusionar movimientos personales por id.");
+assert(personal.includes('invoice.status !== "Cobrada"'), "Autónomo debe calcularse automáticamente desde facturas cobradas.");
+assert(personal.includes("Nómina") && personal.includes("Ingreso extra") && personal.includes("Mensualidades") && personal.includes("Seguros") && personal.includes("Deporte"), "La tabla anual debe conservar las columnas del control personal.");
+assert(personal.includes("Motivo ingreso extra") && personal.includes("Motivo gasto extra"), "La tabla anual debe permitir anotar motivos de ingresos y gastos extra.");
+assert(personal.includes("Ingreso total") && personal.includes("Gasto total") && personal.includes("Ahorro"), "La tabla debe calcular totales y ahorro mensual.");
+assert(personal.includes("TOTAL {year}") && personal.includes("monthNames.map"), "Cuentas debe mostrar doce meses y una fila total anual.");
+assert(personal.includes('fetch("/api/personal"') && personal.includes("accountMonths"), "Cuentas debe sincronizar las filas mensuales con la API personal.");
+assert(database.includes("accountMonths?: unknown[]"), "La sincronización debe tipar las filas mensuales personales.");
+assert(edge.includes('scope === "personal"') && edge.includes("accountMonths: mergeByKey"), "Supabase debe fusionar las filas mensuales por id.");
 assert(edge.includes('"default", "fiscal", "personal"'), "La Edge Function debe aceptar el ámbito personal.");
-assert(styles.includes(".nav-group-toggle") && styles.includes(".personal-kpis"), "El menú Autónomo y Cuentas deben tener estilos responsive.");
+assert(styles.includes(".nav-group-toggle") && styles.includes(".accounts-table"), "El menú Autónomo y la tabla anual deben tener estilos responsive.");
 
 console.log("Stability checks OK");
