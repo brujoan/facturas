@@ -22,6 +22,7 @@ export type AppPayload = {
   recurring?: unknown[];
   deletedMovementIds?: string[];
   deletedRecurringIds?: string[];
+  accountMonths?: unknown[];
 };
 
 export type SyncResult = {

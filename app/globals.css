@@ -4520,3 +4520,284 @@ h3 { margin-bottom: 8px; }
     grid-row: 1 / 3;
   }
 }
+
+
+/* v0.14.0 · Cuentas anual simple */
+.accounts-ledger-header {
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.accounts-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.accounts-yearbar {
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+}
+
+.accounts-yearbar input {
+  width: 92px;
+  height: 34px;
+  padding: 5px 8px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.accounts-year-arrow,
+.accounts-current-year {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: #475467;
+  font-weight: 800;
+}
+
+.accounts-year-arrow {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 20px;
+}
+
+.accounts-current-year {
+  height: 34px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.accounts-table-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.accounts-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.accounts-table {
+  width: 100%;
+  min-width: 1380px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.accounts-table th,
+.accounts-table td {
+  border-right: 1px solid #edf0f3;
+  border-bottom: 1px solid #edf0f3;
+  padding: 7px;
+  vertical-align: middle;
+}
+
+.accounts-table tr > *:last-child {
+  border-right: 0;
+}
+
+.accounts-table thead th {
+  background: #fafbfc;
+  color: #667085;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.accounts-table .accounts-group-row th {
+  height: 30px;
+  background: #f4f6f8;
+  color: #475467;
+  font-size: 9px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.accounts-table thead th:first-child,
+.accounts-table tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 92px;
+  min-width: 92px;
+}
+
+.accounts-table thead th:first-child {
+  z-index: 5;
+  background: #f4f6f8;
+}
+
+.accounts-table tbody th {
+  background: white;
+  color: #344054;
+  font-size: 10px;
+  text-align: left;
+}
+
+.accounts-table tbody tr.current-month th {
+  color: #111827;
+  font-weight: 850;
+}
+
+.accounts-table tbody tr.current-month td,
+.accounts-table tbody tr.current-month th {
+  background-color: #fcfcfd;
+}
+
+.accounts-table td {
+  width: 92px;
+  min-width: 92px;
+  font-size: 10px;
+  text-align: right;
+}
+
+.accounts-table .accounts-reason-col,
+.accounts-table .accounts-reason-cell {
+  width: 155px;
+  min-width: 155px;
+}
+
+.accounts-table input {
+  height: 31px;
+  border-radius: 7px;
+  padding: 5px 6px;
+  font-size: 10px;
+}
+
+.accounts-money-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-reason-cell input {
+  text-align: left;
+}
+
+.accounts-auto-cell {
+  background: #f8fbff;
+  color: #175cd3;
+}
+
+.accounts-auto-cell strong,
+.accounts-auto-cell small {
+  display: block;
+}
+
+.accounts-auto-cell strong {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-auto-cell small {
+  margin-top: 2px;
+  color: #84a0c6;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.accounts-total {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-total.income {
+  background: #f6fffb;
+  color: #067647;
+}
+
+.accounts-total.expense {
+  background: #fffaf5;
+  color: #b54708;
+}
+
+.accounts-savings {
+  background: #f6fffb;
+  color: #067647;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-savings.negative,
+.accounts-year-total .negative {
+  background: #fff8f8;
+  color: #b42318;
+}
+
+.accounts-hidden {
+  display: block;
+  padding: 7px 2px;
+  color: #98a2b3;
+  text-align: center;
+}
+
+.accounts-year-total th,
+.accounts-year-total td {
+  background: #f4f6f8 !important;
+  color: #344054;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-year-total th {
+  z-index: 4;
+}
+
+.accounts-note {
+  margin: 9px 2px 0;
+  color: #7c8796;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+@media (max-width: 760px) {
+  .accounts-ledger-header {
+    align-items: flex-start;
+  }
+
+  .accounts-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .accounts-yearbar {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .accounts-table {
+    min-width: 1320px;
+  }
+
+  .accounts-table th,
+  .accounts-table td {
+    padding: 6px;
+  }
+
+  .accounts-table thead th:first-child,
+  .accounts-table tbody th {
+    width: 78px;
+    min-width: 78px;
+  }
+
+  .accounts-table td {
+    width: 86px;
+    min-width: 86px;
+  }
+
+  .accounts-table .accounts-reason-col,
+  .accounts-table .accounts-reason-cell {
+    width: 140px;
+    min-width: 140px;
+  }
+}

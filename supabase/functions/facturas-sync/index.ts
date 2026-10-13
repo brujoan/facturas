@@ -235,6 +235,7 @@ function mergeState(scope: string, current: unknown, incoming: unknown, now: str
         .filter((row) => !deletedMovements.has(String(row.id || ""))),
       recurring: mergeByKey(oldState.recurring, newState.recurring, "id", now)
         .filter((row) => !deletedRecurring.has(String(row.id || ""))),
+      accountMonths: mergeByKey(oldState.accountMonths, newState.accountMonths, "id", now),
       deletedMovementIds,
       deletedRecurringIds
     };
