@@ -208,6 +208,10 @@ function salaryMonthForDate(date: string) {
   return date.slice(0, 7);
 }
 
+function participatesInCycle(monthId: string) {
+  return !monthId.startsWith("2026-") || monthId >= "2026-09";
+}
+
 function normalize2026OpeningCycle(sourceMonths: AccountMonth[]) {
   const augustId = "2026-08";
   const septemberId = "2026-09";
@@ -242,7 +246,7 @@ function cycleMonthForDate(date: string, sourceMonths: AccountMonth[]) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date.slice(0, 7);
 
   const salaryRows = sourceMonths
-    .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.salaryDate || ""))
+    .filter((item) => participatesInCycle(item.id) && /^\d{4}-\d{2}-\d{2}$/.test(item.salaryDate || ""))
     .sort((a, b) => String(a.salaryDate).localeCompare(String(b.salaryDate)));
 
   let matched = "";
@@ -518,7 +522,7 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
 
   const payCycleRanges = useMemo(() => {
     const salaryRows = months
-      .filter((item) => item.salaryDate)
+      .filter((item) => participatesInCycle(item.id) && item.salaryDate)
       .sort((a, b) => String(a.salaryDate).localeCompare(String(b.salaryDate)));
 
     const ranges = new Map<string, string>();
@@ -910,7 +914,12 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
     if (!(quickType === "income" && quickSection === "salary")) {
       const movementMonth = quickDate.slice(0, 7);
       const missingSalaryCycle = months
-        .filter((item) => item.salary > 0 && !item.salaryDate && item.id <= movementMonth)
+        .filter((item) =>
+          participatesInCycle(item.id) &&
+          item.salary > 0 &&
+          !item.salaryDate &&
+          item.id <= movementMonth
+        )
         .sort((a, b) => b.id.localeCompare(a.id))[0];
 
       if (missingSalaryCycle) {
