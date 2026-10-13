@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import FiscalPanel from "@/components/FiscalPanel";
 import FinancePanel from "@/components/FinancePanel";
+import PersonalFinancePanel from "@/components/PersonalFinancePanel";
 import { buildInvoicePdf } from "@/lib/invoicePdf";
 
-type Tab = "facturas" | "nueva" | "clientes" | "finanzas" | "fiscal" | "config";
+type Tab = "facturas" | "nueva" | "clientes" | "finanzas" | "fiscal" | "config" | "cuentas";
 type BillingPeriod = "month" | "year" | "total";
 type BillingCalendarView = "month" | "three" | "year";
 type BillingCompareMode = "month" | "year" | "range";
@@ -366,6 +367,7 @@ type InvoiceAppProps = {
 
 export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
   const [tab, setTab] = useState<Tab>("facturas");
+  const [autonomoOpen, setAutonomoOpen] = useState(true);
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("month");
   const [billingVisible, setBillingVisible] = useState(false);
   const [billingCalendarOpen, setBillingCalendarOpen] = useState(false);
@@ -1971,27 +1973,46 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
             </div>
 
             <nav>
-              <button className={tab === "facturas" ? "active" : ""} onClick={() => setTab("facturas")}>
-                <span>▦</span> Facturas
-              </button>
-              <button className={tab === "nueva" ? "active" : ""} onClick={() => {
-                setEditingId(null);
-                setDraft(emptyInvoice(activities[0]));
-                setTab("nueva");
-              }}>
-                <span>＋</span> Nueva factura
-              </button>
-              <button className={tab === "clientes" ? "active" : ""} onClick={() => setTab("clientes")}>
-                <span>♙</span> Clientes
-              </button>
-              <button className={tab === "finanzas" ? "active" : ""} onClick={() => setTab("finanzas")}>
-                <span>⌁</span> Ingresos y gastos
-              </button>
-              <button className={tab === "fiscal" ? "active" : ""} onClick={() => setTab("fiscal")}>
-                <span>◫</span> Trimestrales
-              </button>
-              <button className={tab === "config" ? "active" : ""} onClick={() => setTab("config")}>
-                <span>⚙</span> Configuración
+              <div className="nav-group">
+                <button
+                  className={`nav-group-toggle ${["facturas", "nueva", "clientes", "finanzas", "fiscal", "config"].includes(tab) ? "active-group" : ""}`}
+                  onClick={() => setAutonomoOpen((open) => !open)}
+                  aria-expanded={autonomoOpen}
+                >
+                  <span className="nav-group-label"><span>▦</span> Autónomo</span>
+                  <span className={`nav-chevron ${autonomoOpen ? "open" : ""}`}>⌄</span>
+                </button>
+
+                {autonomoOpen && (
+                  <div className="nav-submenu">
+                    <button className={tab === "facturas" ? "active" : ""} onClick={() => setTab("facturas")}>
+                      <span>▦</span> Facturas
+                    </button>
+                    <button className={tab === "nueva" ? "active" : ""} onClick={() => {
+                      setEditingId(null);
+                      setDraft(emptyInvoice(activities[0]));
+                      setTab("nueva");
+                    }}>
+                      <span>＋</span> Nueva factura
+                    </button>
+                    <button className={tab === "clientes" ? "active" : ""} onClick={() => setTab("clientes")}>
+                      <span>♙</span> Clientes
+                    </button>
+                    <button className={tab === "finanzas" ? "active" : ""} onClick={() => setTab("finanzas")}>
+                      <span>⌁</span> Ingresos y gastos
+                    </button>
+                    <button className={tab === "fiscal" ? "active" : ""} onClick={() => setTab("fiscal")}>
+                      <span>◫</span> Trimestrales
+                    </button>
+                    <button className={tab === "config" ? "active" : ""} onClick={() => setTab("config")}>
+                      <span>⚙</span> Configuración
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button className={tab === "cuentas" ? "active" : ""} onClick={() => setTab("cuentas")}>
+                <span>◉</span> Cuentas
               </button>
             </nav>
           </div>
@@ -3043,6 +3064,14 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               amountsVisible={billingVisible}
               onToggleAmounts={() => setBillingVisible((visible) => !visible)}
               onOpenFiscal={() => setTab("fiscal")}
+            />
+          )}
+
+          {tab === "cuentas" && (
+            <PersonalFinancePanel
+              invoices={invoices}
+              amountsVisible={billingVisible}
+              onToggleAmounts={() => setBillingVisible((visible) => !visible)}
             />
           )}
 
