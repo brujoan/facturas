@@ -138,7 +138,7 @@ assert(styles.includes("/* v0.17.0 · Ciclos de nómina, coche y guía de celda 
 assert(styles.includes("tr:not(.accounts-year-total):hover") && styles.includes(":nth-child(14):hover"), "La tabla debe resaltar fila y columna al pasar por una casilla.");
 assert(personal.includes("salaryDateEditor") && personal.includes("saveSalaryDate") && personal.includes("Cambiar fecha de nómina"), "La fecha de nómina debe poder corregirse después y recalcular los ciclos.");
 assert(personal.includes("accounts-year-average") && personal.includes("averageMonthCount") && personal.includes("averages"), "Debajo de los totales debe mostrarse una media mensual.");
-assert(personal.includes("rows.filter((row)") && personal.includes("row.totalExpense !== 0"), "La media debe calcularse solo con meses que tienen datos.");
+assert(personal.includes("accountingRows.filter((row)") && personal.includes("row.totalExpense !== 0"), "La media debe calcularse solo con meses contables que tienen datos.");
 assert(styles.includes("/* v0.18.0 · Autónomo manual, fecha de nómina editable y tabla pulida */"), "Cuentas debe aplicar el pulido visual de importes y columnas.");
 assert(styles.includes("font-variant-numeric: tabular-nums") && styles.includes("text-overflow: clip"), "Los importes deben mantenerse alineados y contenidos dentro de su columna.");
 assert(styles.includes(".accounts-salary-date-modal") && styles.includes(".accounts-year-average"), "La edición de nómina y la fila de media deben tener estilos propios.");
