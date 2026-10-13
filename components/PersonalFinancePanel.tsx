@@ -173,14 +173,6 @@ function mergeById(remote: AccountMonth[], local: AccountMonth[]) {
   return [...map.values()];
 }
 
-function invoiceFreelanceIncomeWithoutVat(invoice: Invoice) {
-  return money(invoice.lines.reduce((sum, line) => {
-    const base = Number(line.quantity || 0) * Number(line.unitPrice || 0);
-    const withholding = base * (Number(line.withholding || 0) / 100);
-    return sum + base - withholding;
-  }, 0));
-}
-
 function appendReason(current: string, next: string) {
   const clean = next.trim();
   if (!clean) return current;
