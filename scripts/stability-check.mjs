@@ -11,6 +11,8 @@ function assert(condition, message) {
 const app = file("components/InvoiceApp.tsx");
 const fiscal = file("components/FiscalPanel.tsx");
 const finance = file("components/FinancePanel.tsx");
+const personal = file("components/PersonalFinancePanel.tsx");
+const database = file("lib/database.ts");
 const edge = file("supabase/functions/facturas-sync/index.ts");
 const invoicePdf = file("lib/invoicePdf.ts");
 const styles = file("app/globals.css");
@@ -88,5 +90,18 @@ assert(finance.includes("profit: money(incomeBase - expenseBase)"), "El benefici
 assert(finance.includes("fiscalProfit: money(incomeBase - deductibleExpenseBase)"), "La vista debe separar el rendimiento fiscal aproximado.");
 assert(finance.includes('fetch("/api/fiscal"'), "La vista financiera debe reutilizar los gastos del control fiscal.");
 assert(styles.includes(".finance-kpis") && styles.includes(".invoice-status-select"), "La nueva interfaz debe tener estilos responsive.");
+
+assert(app.includes('tab === "cuentas"'), "La navegación debe incluir el apartado personal Cuentas.");
+assert(app.includes("nav-group-toggle") && app.includes("Autónomo"), "Los apartados profesionales deben agruparse en el desplegable Autónomo.");
+assert(personal.includes("Finanzas personales") && personal.includes("<h1>Cuentas</h1>"), "Cuentas debe tener una vista personal independiente.");
+assert(personal.includes('invoice.status === "Cobrada"'), "Las facturas cobradas deben importarse automáticamente como ingresos de autónomo.");
+assert(personal.includes('category: "Autónomo"'), "Los ingresos automáticos de facturas deben clasificarse como Autónomo.");
+assert(personal.includes("Repetir cada mes") && personal.includes("materializeRecurring"), "Cuentas debe soportar ingresos y gastos mensuales recurrentes.");
+assert(personal.includes("Nómina") && personal.includes("Ocio") && personal.includes("Vivienda"), "Cuentas debe incluir categorías personales básicas.");
+assert(personal.includes('fetch("/api/personal"'), "Cuentas debe sincronizar sus movimientos con la API personal.");
+assert(database.includes('"default" | "fiscal" | "personal"'), "La sincronización debe admitir el ámbito personal.");
+assert(edge.includes('scope === "personal"'), "Supabase debe fusionar movimientos personales por id.");
+assert(edge.includes('"default", "fiscal", "personal"'), "La Edge Function debe aceptar el ámbito personal.");
+assert(styles.includes(".nav-group-toggle") && styles.includes(".personal-kpis"), "El menú Autónomo y Cuentas deben tener estilos responsive.");
 
 console.log("Stability checks OK");

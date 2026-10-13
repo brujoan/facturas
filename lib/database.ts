@@ -1,6 +1,6 @@
 import { sign } from "crypto";
 
-export type SyncScope = "default" | "fiscal";
+export type SyncScope = "default" | "fiscal" | "personal";
 
 export type AppPayload = {
   issuer?: unknown;
@@ -18,6 +18,10 @@ export type AppPayload = {
   deletedExpenseIds?: string[];
   recurringExpenses?: unknown[];
   deletedRecurringExpenseIds?: string[];
+  movements?: unknown[];
+  recurring?: unknown[];
+  deletedMovementIds?: string[];
+  deletedRecurringIds?: string[];
 };
 
 export type SyncResult = {
@@ -100,4 +104,12 @@ export async function readFiscalState() {
 
 export async function writeFiscalState(payload: AppPayload) {
   return requestState("fiscal", "PUT", payload);
+}
+
+export async function readPersonalState() {
+  return requestState("personal", "GET");
+}
+
+export async function writePersonalState(payload: AppPayload) {
+  return requestState("personal", "PUT", payload);
 }
