@@ -104,5 +104,9 @@ assert(database.includes("accountMonths?: unknown[]"), "La sincronización debe 
 assert(edge.includes('scope === "personal"') && edge.includes("accountMonths: mergeByKey"), "Supabase debe fusionar las filas mensuales por id.");
 assert(edge.includes('"default", "fiscal", "personal"'), "La Edge Function debe aceptar el ámbito personal.");
 assert(styles.includes(".nav-group-toggle") && styles.includes(".accounts-table"), "El menú Autónomo y la tabla anual deben tener estilos responsive.");
+assert(personal.includes("accounts-mobile-list") && personal.includes("accounts-mobile-month"), "Cuentas debe tener una vista móvil sin scroll horizontal.");
+assert(styles.includes("/* v0.14.1 · Cuentas sin scroll horizontal */"), "Cuentas debe incluir el ajuste de ancho completo.");
+assert(styles.includes(".accounts-table-scroll {\n  overflow-x: hidden;"), "La tabla de Cuentas no debe requerir desplazamiento horizontal en escritorio.");
+assert(styles.includes("@media (max-width: 900px)") && styles.includes(".accounts-table-panel {\n    display: none;"), "En pantallas estrechas la tabla debe sustituirse por fichas legibles.");
 
 console.log("Stability checks OK");
