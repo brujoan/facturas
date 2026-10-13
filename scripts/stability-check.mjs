@@ -116,6 +116,13 @@ assert(personal.includes("openBreakdown") && personal.includes("Guardar desglose
 assert(personal.includes('colSpan={8}>Gastos'), "La tabla debe incluir la nueva columna de gasto Autónomo.");
 assert(styles.includes("/* v0.15.0 · Cuentas legibles y gastos desglosables */"), "Cuentas debe aplicar la tipografía ampliada y el modal de desglose.");
 assert(styles.includes(".accounts-breakdown-modal") && styles.includes(".accounts-breakdown-button"), "El desglose de gastos debe tener interfaz propia.");
+assert(personal.includes("accounts-quick-movement") && personal.includes("addQuickMovement"), "Cuentas debe permitir añadir movimientos rápidamente junto al selector de año.");
+assert(personal.includes('value="expense"') && personal.includes('value="income"'), "El alta rápida debe permitir elegir entre gasto e ingreso.");
+assert(personal.includes('value="monthlyPayments"') && personal.includes('value="freelanceExpense"') && personal.includes('value="extraIncome"'), "El alta rápida debe permitir elegir la sección correspondiente.");
+assert(personal.includes("Falta importe o concepto"), "El alta rápida debe exigir importe y concepto.");
+assert(personal.includes("Sin desglosar") && personal.includes("nextItems"), "Los gastos añadidos rápidamente deben integrarse en el desglose sin perder importes anteriores.");
+assert(styles.includes("/* v0.15.1 · Alta rápida de movimientos */") && styles.includes(".accounts-quick-movement"), "El acceso rápido debe tener estilos compactos y responsive.");
+
 
 
 console.log("Stability checks OK");
