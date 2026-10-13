@@ -5702,3 +5702,112 @@ h3 { margin-bottom: 8px; }
     grid-column: 1 / -1;
   }
 }
+
+
+/* v0.17.0 · Ciclos de nómina, coche y guía de celda */
+.accounts-last-movement {
+  margin-left: 4px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.accounts-table tbody th > span,
+.accounts-table tbody th > small {
+  display: block;
+}
+
+.accounts-table tbody th > small {
+  margin-top: 3px;
+  color: #8a94a3;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.accounts-mobile-month > header > div {
+  min-width: 0;
+}
+
+.accounts-mobile-month > header > div > strong,
+.accounts-mobile-month > header > div > small {
+  display: block;
+}
+
+.accounts-mobile-month > header > div > small {
+  margin-top: 3px;
+  color: #7c8796;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.accounts-table tbody tr:not(.accounts-year-total):hover > *,
+.accounts-table tbody tr:not(.accounts-year-total):has(:focus) > * {
+  background-color: #f4f8ff !important;
+}
+
+.accounts-table tbody tr > *:hover,
+.accounts-table tbody tr > *:focus-within {
+  background-color: #dfeeff !important;
+  box-shadow: inset 0 0 0 2px #9cc2f4;
+}
+
+/* Resaltado vertical de columna para no perder la referencia. */
+.accounts-table:has(tbody tr > *:nth-child(1):hover) tbody tr > *:nth-child(1),
+.accounts-table:has(tbody tr > *:nth-child(1):focus-within) tbody tr > *:nth-child(1),
+.accounts-table:has(tbody tr > *:nth-child(2):hover) tbody tr > *:nth-child(2),
+.accounts-table:has(tbody tr > *:nth-child(2):focus-within) tbody tr > *:nth-child(2),
+.accounts-table:has(tbody tr > *:nth-child(3):hover) tbody tr > *:nth-child(3),
+.accounts-table:has(tbody tr > *:nth-child(3):focus-within) tbody tr > *:nth-child(3),
+.accounts-table:has(tbody tr > *:nth-child(4):hover) tbody tr > *:nth-child(4),
+.accounts-table:has(tbody tr > *:nth-child(4):focus-within) tbody tr > *:nth-child(4),
+.accounts-table:has(tbody tr > *:nth-child(5):hover) tbody tr > *:nth-child(5),
+.accounts-table:has(tbody tr > *:nth-child(5):focus-within) tbody tr > *:nth-child(5),
+.accounts-table:has(tbody tr > *:nth-child(6):hover) tbody tr > *:nth-child(6),
+.accounts-table:has(tbody tr > *:nth-child(6):focus-within) tbody tr > *:nth-child(6),
+.accounts-table:has(tbody tr > *:nth-child(7):hover) tbody tr > *:nth-child(7),
+.accounts-table:has(tbody tr > *:nth-child(7):focus-within) tbody tr > *:nth-child(7),
+.accounts-table:has(tbody tr > *:nth-child(8):hover) tbody tr > *:nth-child(8),
+.accounts-table:has(tbody tr > *:nth-child(8):focus-within) tbody tr > *:nth-child(8),
+.accounts-table:has(tbody tr > *:nth-child(9):hover) tbody tr > *:nth-child(9),
+.accounts-table:has(tbody tr > *:nth-child(9):focus-within) tbody tr > *:nth-child(9),
+.accounts-table:has(tbody tr > *:nth-child(10):hover) tbody tr > *:nth-child(10),
+.accounts-table:has(tbody tr > *:nth-child(10):focus-within) tbody tr > *:nth-child(10),
+.accounts-table:has(tbody tr > *:nth-child(11):hover) tbody tr > *:nth-child(11),
+.accounts-table:has(tbody tr > *:nth-child(11):focus-within) tbody tr > *:nth-child(11),
+.accounts-table:has(tbody tr > *:nth-child(12):hover) tbody tr > *:nth-child(12),
+.accounts-table:has(tbody tr > *:nth-child(12):focus-within) tbody tr > *:nth-child(12),
+.accounts-table:has(tbody tr > *:nth-child(13):hover) tbody tr > *:nth-child(13),
+.accounts-table:has(tbody tr > *:nth-child(13):focus-within) tbody tr > *:nth-child(13),
+.accounts-table:has(tbody tr > *:nth-child(14):hover) tbody tr > *:nth-child(14),
+.accounts-table:has(tbody tr > *:nth-child(14):focus-within) tbody tr > *:nth-child(14) {
+  background-color: #eef5ff !important;
+}
+
+.accounts-table:has(tbody tr > *:nth-child(1):hover) thead tr:last-child > *:nth-child(1),
+.accounts-table:has(tbody tr > *:nth-child(2):hover) thead tr:last-child > *:nth-child(1),
+.accounts-table:has(tbody tr > *:nth-child(3):hover) thead tr:last-child > *:nth-child(2),
+.accounts-table:has(tbody tr > *:nth-child(4):hover) thead tr:last-child > *:nth-child(3),
+.accounts-table:has(tbody tr > *:nth-child(5):hover) thead tr:last-child > *:nth-child(4),
+.accounts-table:has(tbody tr > *:nth-child(6):hover) thead tr:last-child > *:nth-child(5),
+.accounts-table:has(tbody tr > *:nth-child(7):hover) thead tr:last-child > *:nth-child(6),
+.accounts-table:has(tbody tr > *:nth-child(8):hover) thead tr:last-child > *:nth-child(7),
+.accounts-table:has(tbody tr > *:nth-child(9):hover) thead tr:last-child > *:nth-child(8),
+.accounts-table:has(tbody tr > *:nth-child(10):hover) thead tr:last-child > *:nth-child(9),
+.accounts-table:has(tbody tr > *:nth-child(11):hover) thead tr:last-child > *:nth-child(10),
+.accounts-table:has(tbody tr > *:nth-child(12):hover) thead tr:last-child > *:nth-child(11),
+.accounts-table:has(tbody tr > *:nth-child(13):hover) thead tr:last-child > *:nth-child(12) {
+  background-color: #e8f1ff !important;
+  color: #1d4f91;
+}
+
+@media (max-width: 900px) {
+  .accounts-last-movement {
+    font-size: 11px;
+  }
+}
