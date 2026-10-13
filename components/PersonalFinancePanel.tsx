@@ -37,6 +37,7 @@ type AccountMonth = {
   salary: number;
   extraIncome: number;
   extraIncomeReason: string;
+  salaryReason?: string;
   monthlyPayments: number;
   insurance: number;
   leisure: number;
@@ -123,6 +124,7 @@ function blankMonth(id: string): AccountMonth {
     salary: 0,
     extraIncome: 0,
     extraIncomeReason: "",
+    salaryReason: "",
     monthlyPayments: 0,
     insurance: 0,
     leisure: 0,
@@ -211,6 +213,11 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
   const [ready, setReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"local" | "saving" | "saved" | "error">("local");
   const [breakdownEditor, setBreakdownEditor] = useState<BreakdownEditor | null>(null);
+  const [quickType, setQuickType] = useState<"income" | "expense">("expense");
+  const [quickSection, setQuickSection] = useState<"salary" | "extraIncome" | ExpenseField>("monthlyPayments");
+  const [quickAmount, setQuickAmount] = useState("");
+  const [quickConcept, setQuickConcept] = useState("");
+  const [quickNotice, setQuickNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -562,6 +569,72 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
     setBreakdownEditor(null);
   }
 
+  function addQuickMovement(event: React.FormEvent) {
+    event.preventDefault();
+
+    const amount = money(Number(quickAmount || 0));
+    const concept = quickConcept.trim();
+    if (amount <= 0 || !concept) {
+      setQuickNotice("Falta importe o concepto");
+      window.setTimeout(() => setQuickNotice(""), 1800);
+      return;
+    }
+
+    const monthIndex = new Date().getMonth();
+    const monthId = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+
+    setMonths((current) => {
+      const index = current.findIndex((item) => item.id === monthId);
+      const base = index >= 0 ? current[index] : blankMonth(monthId);
+      let next: AccountMonth = { ...base, updatedAt: nowISO() };
+
+      if (quickType === "income") {
+        if (quickSection === "salary") {
+          next = {
+            ...next,
+            salary: money(base.salary + amount),
+            salaryReason: appendReason(base.salaryReason || "", concept)
+          };
+        } else {
+          next = {
+            ...next,
+            extraIncome: money(base.extraIncome + amount),
+            extraIncomeReason: appendReason(base.extraIncomeReason, concept)
+          };
+        }
+      } else {
+        const field = quickSection as ExpenseField;
+        const currentTotal = Number(base[field] || 0);
+        const existing = base.breakdowns?.[field] || [];
+        const items = existing.length
+          ? [...existing]
+          : currentTotal > 0
+            ? [{ id: uid(), concept: "Sin desglosar", amount: currentTotal }]
+            : [];
+
+        const nextItems = [...items, { id: uid(), concept, amount }];
+        const total = money(nextItems.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+
+        next = {
+          ...next,
+          [field]: total,
+          breakdowns: {
+            ...(base.breakdowns || {}),
+            [field]: nextItems
+          }
+        };
+      }
+
+      if (index < 0) return [...current, next];
+      return current.map((item, itemIndex) => itemIndex === index ? next : item);
+    });
+
+    setQuickAmount("");
+    setQuickConcept("");
+    setQuickNotice(`Añadido a ${monthNames[new Date().getMonth()]}`);
+    window.setTimeout(() => setQuickNotice(""), 1800);
+  }
+
   function shown(value: number) {
     return amountsVisible ? currency(value) : "•••• €";
   }
@@ -600,33 +673,101 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
       </header>
 
       <div className="accounts-yearbar panel">
-        <button
-          className="accounts-year-arrow"
-          onClick={() => setYear((current) => current - 1)}
-          aria-label="Año anterior"
-        >
-          ‹
-        </button>
-        <input
-          type="number"
-          min="2000"
-          max="2100"
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value) || currentYear())}
-          aria-label="Año"
-        />
-        <button
-          className="accounts-year-arrow"
-          onClick={() => setYear((current) => current + 1)}
-          aria-label="Año siguiente"
-        >
-          ›
-        </button>
-        {year !== currentYear() && (
-          <button className="accounts-current-year" onClick={() => setYear(currentYear())}>
-            Año actual
+        <div className="accounts-year-selector">
+          <button
+            className="accounts-year-arrow"
+            onClick={() => setYear((current) => current - 1)}
+            aria-label="Año anterior"
+          >
+            ‹
           </button>
-        )}
+          <input
+            type="number"
+            min="2000"
+            max="2100"
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value) || currentYear())}
+            aria-label="Año"
+          />
+          <button
+            className="accounts-year-arrow"
+            onClick={() => setYear((current) => current + 1)}
+            aria-label="Año siguiente"
+          >
+            ›
+          </button>
+          {year !== currentYear() && (
+            <button className="accounts-current-year" onClick={() => setYear(currentYear())}>
+              Año actual
+            </button>
+          )}
+        </div>
+
+        <form
+          className="accounts-quick-movement"
+          onSubmit={addQuickMovement}
+          title={`Añadir a ${monthNames[new Date().getMonth()]} ${year}`}
+        >
+          <span className="accounts-quick-month">{monthNames[new Date().getMonth()].slice(0, 3)}.</span>
+          <select
+            value={quickType}
+            onChange={(e) => {
+              const type = e.target.value as "income" | "expense";
+              setQuickType(type);
+              setQuickSection(type === "income" ? "salary" : "monthlyPayments");
+            }}
+            aria-label="Tipo de movimiento"
+          >
+            <option value="expense">Gasto</option>
+            <option value="income">Ingreso</option>
+          </select>
+
+          <select
+            value={quickSection}
+            onChange={(e) => setQuickSection(e.target.value as "salary" | "extraIncome" | ExpenseField)}
+            aria-label="Sección"
+          >
+            {quickType === "income" ? (
+              <>
+                <option value="salary">Nómina</option>
+                <option value="extraIncome">Ingreso extra</option>
+              </>
+            ) : (
+              <>
+                <option value="monthlyPayments">Mensualidades</option>
+                <option value="insurance">Seguros</option>
+                <option value="leisure">Ocio</option>
+                <option value="sport">Deporte</option>
+                <option value="freelanceExpense">Autónomo</option>
+                <option value="extraExpense">Gasto extra</option>
+              </>
+            )}
+          </select>
+
+          <input
+            className="accounts-quick-amount"
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={quickAmount}
+            placeholder="Importe"
+            aria-label="Importe"
+            onChange={(e) => setQuickAmount(e.target.value)}
+          />
+
+          <input
+            className="accounts-quick-concept"
+            type="text"
+            value={quickConcept}
+            placeholder="Concepto"
+            aria-label="Concepto"
+            onChange={(e) => setQuickConcept(e.target.value)}
+          />
+
+          <button className="accounts-quick-add" type="submit" aria-label="Añadir movimiento">+</button>
+          {quickNotice && <span className="accounts-quick-notice">{quickNotice}</span>}
+        </form>
       </div>
 
       <div className="accounts-table-panel panel">
