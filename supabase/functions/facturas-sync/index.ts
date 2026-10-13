@@ -222,6 +222,24 @@ function mergeState(scope: string, current: unknown, incoming: unknown, now: str
     };
   }
 
+  if (scope === "personal") {
+    const deletedMovementIds = mergeStringSet(oldState.deletedMovementIds, newState.deletedMovementIds);
+    const deletedRecurringIds = mergeStringSet(oldState.deletedRecurringIds, newState.deletedRecurringIds);
+    const deletedMovements = new Set(deletedMovementIds);
+    const deletedRecurring = new Set(deletedRecurringIds);
+
+    return {
+      ...oldState,
+      ...newState,
+      movements: mergeByKey(oldState.movements, newState.movements, "id", now)
+        .filter((row) => !deletedMovements.has(String(row.id || ""))),
+      recurring: mergeByKey(oldState.recurring, newState.recurring, "id", now)
+        .filter((row) => !deletedRecurring.has(String(row.id || ""))),
+      deletedMovementIds,
+      deletedRecurringIds
+    };
+  }
+
   const deletedClientIds = mergeStringSet(oldState.deletedClientIds, newState.deletedClientIds);
   const deletedInvoiceIds = mergeStringSet(oldState.deletedInvoiceIds, newState.deletedInvoiceIds);
   const deletedActivityIds = mergeStringSet(oldState.deletedActivityIds, newState.deletedActivityIds);
@@ -273,7 +291,7 @@ Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const scope = url.searchParams.get("scope") || "default";
 
-  if (!["default", "fiscal"].includes(scope)) {
+  if (!["default", "fiscal", "personal"].includes(scope)) {
     return Response.json({ error: "Invalid scope" }, { status: 400 });
   }
 
