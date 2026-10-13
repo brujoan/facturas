@@ -5552,3 +5552,153 @@ h3 { margin-bottom: 8px; }
     bottom: -19px;
   }
 }
+
+
+/* v0.16.0 · Fecha rápida, extras desglosados y tipografía mayor */
+.accounts-table th,
+.accounts-table td {
+  padding: 8px 5px;
+  font-size: 13px;
+}
+
+.accounts-table thead th,
+.accounts-table .accounts-group-row th {
+  font-size: 12.5px;
+  line-height: 1.15;
+}
+
+.accounts-table tbody th {
+  font-size: 13px;
+}
+
+.accounts-table thead th:first-child,
+.accounts-table tbody th {
+  width: 6.2%;
+}
+
+.accounts-table input {
+  height: 36px;
+  font-size: 13px;
+}
+
+.accounts-auto-cell strong,
+.accounts-total,
+.accounts-savings,
+.accounts-year-total td {
+  font-size: 13.5px;
+}
+
+.accounts-auto-cell small {
+  font-size: 9px;
+}
+
+.accounts-expense-cell {
+  grid-template-columns: minmax(0, 1fr) 25px;
+  gap: 3px;
+}
+
+.accounts-breakdown-button {
+  width: 25px;
+  height: 32px;
+  font-size: 15px;
+}
+
+.accounts-yearbar {
+  gap: 10px;
+}
+
+.accounts-quick-movement {
+  grid-template-columns: 118px 86px 126px 88px minmax(110px, 1fr) 34px;
+  max-width: 760px;
+}
+
+.accounts-quick-movement select,
+.accounts-quick-movement input {
+  font-size: 12px;
+}
+
+.accounts-quick-date {
+  text-align: left;
+}
+
+.accounts-breakdown-row {
+  grid-template-columns: 124px minmax(0, 1fr) 112px 34px;
+}
+
+.accounts-breakdown-date {
+  font-size: 13px !important;
+}
+
+.accounts-note {
+  font-size: 11.5px;
+}
+
+@media (max-width: 1050px) {
+  .accounts-quick-movement {
+    grid-template-columns: 116px 82px 120px 84px minmax(105px, 1fr) 34px;
+  }
+}
+
+@media (max-width: 700px) {
+  .accounts-quick-movement {
+    grid-template-columns: 1.15fr .8fr 1.15fr;
+    gap: 6px;
+  }
+
+  .accounts-quick-date {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .accounts-quick-movement select:first-of-type {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .accounts-quick-movement select:nth-of-type(2) {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .accounts-quick-amount {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .accounts-quick-concept {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .accounts-quick-add {
+    grid-column: 3;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .accounts-quick-movement select,
+  .accounts-quick-movement input,
+  .accounts-quick-add {
+    height: 40px;
+    font-size: 13px;
+  }
+
+  .accounts-mobile-grid label {
+    font-size: 14px;
+  }
+
+  .accounts-mobile-grid input,
+  .accounts-mobile-auto span {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .accounts-breakdown-row {
+    grid-template-columns: minmax(0, 1fr) 92px 32px;
+  }
+
+  .accounts-breakdown-date {
+    grid-column: 1 / -1;
+  }
+}
