@@ -113,7 +113,7 @@ assert(personal.includes("base - withholding"), "El ingreso de autónomo sin IVA
 assert(personal.includes("freelanceExpense"), "Cuentas debe incluir Autónomo como categoría de gasto.");
 assert(personal.includes("breakdowns?: Partial<Record<BreakdownField, BreakdownItem[]>>"), "Ingresos extra y gastos deben poder guardar un desglose por conceptos.");
 assert(personal.includes("openBreakdown") && personal.includes("Guardar desglose"), "La tabla debe permitir abrir y guardar el detalle de cada gasto.");
-assert(personal.includes('colSpan={7}>Gastos') && personal.includes('colSpan={4}>Ingresos'), "La tabla debe mantener los grupos compactos tras fusionar las columnas de motivo.");
+assert(personal.includes('colSpan={8}>Gastos') && personal.includes('colSpan={4}>Ingresos'), "La tabla debe mantener los grupos compactos tras fusionar las columnas de motivo y añadir Coche.");
 assert(styles.includes("/* v0.15.0 · Cuentas legibles y gastos desglosables */"), "Cuentas debe aplicar la tipografía ampliada y el modal de desglose.");
 assert(styles.includes(".accounts-breakdown-modal") && styles.includes(".accounts-breakdown-button"), "El desglose de gastos debe tener interfaz propia.");
 assert(personal.includes("accounts-quick-movement") && personal.includes("addQuickMovement"), "Cuentas debe permitir añadir movimientos rápidamente junto al selector de año.");
@@ -123,11 +123,20 @@ assert(personal.includes("Falta fecha, importe o concepto"), "El alta rápida de
 assert(personal.includes("Sin desglosar") && personal.includes("nextItems"), "Los gastos añadidos rápidamente deben integrarse en el desglose sin perder importes anteriores.");
 assert(styles.includes("/* v0.15.1 · Alta rápida de movimientos */") && styles.includes(".accounts-quick-movement"), "El acceso rápido debe tener estilos compactos y responsive.");
 assert(personal.includes('type="date"') && personal.includes("quickDate") && personal.includes("todayISO()"), "El alta rápida debe incluir fecha y usar hoy como valor inicial.");
-assert(personal.includes("const monthId = quickDate.slice(0, 7)") && personal.includes("setYear(targetYear)"), "La fecha del movimiento debe decidir el mes y año donde se guarda.");
+assert(personal.includes("cycleMonthForDate(quickDate, months)") && personal.includes("setYear(targetYear)"), "La fecha del movimiento debe decidir el ciclo y año donde se guarda.");
 assert(personal.includes('type BreakdownField = ExpenseField | "extraIncome"'), "Ingreso extra debe reutilizar el sistema de desglose.");
 assert(personal.includes('breakdownCell(row.id, row.name, "extraIncome"') && personal.includes('breakdownCell(row.id, row.name, "extraExpense"'), "Ingreso extra y Gasto extra deben mostrar un único total con desglose.");
 assert(personal.includes("date: quickDate") && personal.includes('className="accounts-breakdown-date"'), "Los movimientos desglosados añadidos rápidamente deben conservar y mostrar su fecha.");
 assert(styles.includes("/* v0.16.0 · Fecha rápida, extras desglosados y tipografía mayor */"), "Cuentas debe aprovechar las columnas eliminadas para aumentar la tipografía.");
+assert(personal.includes('"carExpense"') && personal.includes(">Coche<"), "Cuentas debe incluir una columna de gastos de coche.");
+assert(personal.includes("salaryDate?: string") && personal.includes("cycleMonthForDate"), "Cuentas debe guardar la fecha de nómina y usarla para asignar ciclos.");
+assert(personal.includes("rebalanceDatedBreakdowns") && personal.includes("salaryDate: quickDate"), "Registrar una nómina debe reajustar los movimientos fechados al ciclo correcto.");
+assert(personal.includes("payCycleRanges") && personal.includes("dayBefore"), "La fila mensual debe mostrar el rango real del ciclo de cobro.");
+assert(personal.includes("lastMovementDate") && personal.includes("Último:"), "Cuentas debe mostrar la fecha del último movimiento registrado.");
+assert(personal.includes("cycleMonthForDate(date, months)"), "Los ingresos automáticos de autónomo deben seguir los ciclos de nómina.");
+assert(styles.includes("/* v0.17.0 · Ciclos de nómina, coche y guía de celda */"), "Cuentas debe incluir estilos para ciclos y orientación visual.");
+assert(styles.includes("tr:not(.accounts-year-total):hover") && styles.includes(":nth-child(14):hover"), "La tabla debe resaltar fila y columna al pasar por una casilla.");
+
 
 
 
