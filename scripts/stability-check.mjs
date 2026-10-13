@@ -113,7 +113,7 @@ assert(personal.includes("base - withholding"), "El ingreso de autónomo sin IVA
 assert(personal.includes("freelanceExpense"), "Cuentas debe incluir Autónomo como categoría de gasto.");
 assert(personal.includes("breakdowns?: Partial<Record<BreakdownField, BreakdownItem[]>>"), "Ingresos extra y gastos deben poder guardar un desglose por conceptos.");
 assert(personal.includes("openBreakdown") && personal.includes("Guardar desglose"), "La tabla debe permitir abrir y guardar el detalle de cada gasto.");
-assert(personal.includes('colSpan={7}>Gastos') && personal.includes('colSpan={4}>Ingresos'), "La tabla debe mantener los grupos compactos tras fusionar las columnas de motivo.");
+assert(personal.includes('colSpan={8}>Gastos') && personal.includes('colSpan={4}>Ingresos'), "La tabla debe mantener los grupos compactos tras fusionar las columnas de motivo y añadir Coche.");
 assert(styles.includes("/* v0.15.0 · Cuentas legibles y gastos desglosables */"), "Cuentas debe aplicar la tipografía ampliada y el modal de desglose.");
 assert(styles.includes(".accounts-breakdown-modal") && styles.includes(".accounts-breakdown-button"), "El desglose de gastos debe tener interfaz propia.");
 assert(personal.includes("accounts-quick-movement") && personal.includes("addQuickMovement"), "Cuentas debe permitir añadir movimientos rápidamente junto al selector de año.");
