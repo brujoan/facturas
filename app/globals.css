@@ -4801,3 +4801,308 @@ h3 { margin-bottom: 8px; }
     min-width: 140px;
   }
 }
+
+
+/* v0.14.1 · Cuentas sin scroll horizontal */
+.accounts-ledger-page {
+  max-width: none !important;
+}
+
+.accounts-table-scroll {
+  overflow-x: hidden;
+}
+
+.accounts-table {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.accounts-table th,
+.accounts-table td {
+  min-width: 0;
+  padding: 6px 5px;
+  font-size: 11px;
+}
+
+.accounts-table thead th {
+  font-size: 10.5px;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.accounts-table .accounts-group-row th {
+  font-size: 10.5px;
+}
+
+.accounts-table thead th:first-child,
+.accounts-table tbody th {
+  position: static;
+  width: 6.5%;
+  min-width: 0;
+}
+
+.accounts-table td {
+  width: auto;
+  min-width: 0;
+}
+
+.accounts-table .accounts-reason-col,
+.accounts-table .accounts-reason-cell {
+  width: 10.5%;
+  min-width: 0;
+}
+
+.accounts-table input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 5px 4px;
+  font-size: 11px;
+}
+
+.accounts-table input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.accounts-table input[type="number"]::-webkit-inner-spin-button,
+.accounts-table input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.accounts-auto-cell strong,
+.accounts-total,
+.accounts-savings,
+.accounts-year-total td {
+  font-size: 11px;
+}
+
+.accounts-auto-cell small {
+  font-size: 8px;
+}
+
+.accounts-mobile-list {
+  display: none;
+}
+
+@media (min-width: 901px) {
+  .accounts-ledger-page {
+    width: 100%;
+  }
+
+  .accounts-table-panel {
+    width: 100%;
+  }
+
+  .accounts-table col,
+  .accounts-table th,
+  .accounts-table td {
+    max-width: none;
+  }
+
+  .accounts-ledger-header {
+    margin-bottom: 12px;
+  }
+
+  .accounts-yearbar {
+    margin-bottom: 9px;
+  }
+
+  .accounts-note {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  .accounts-table-panel {
+    display: none;
+  }
+
+  .accounts-mobile-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .accounts-mobile-month {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: white;
+    box-shadow: var(--shadow);
+  }
+
+  .accounts-mobile-month > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: #fafbfc;
+  }
+
+  .accounts-mobile-month > header > strong {
+    font-size: 15px;
+  }
+
+  .accounts-mobile-month > header > span {
+    color: #067647;
+    font-size: 13px;
+    font-weight: 850;
+  }
+
+  .accounts-mobile-month > header > span.negative {
+    color: #b42318;
+  }
+
+  .accounts-mobile-month.current-month {
+    border-color: #b9c3cf;
+    box-shadow: 0 0 0 2px rgba(17,24,39,.04);
+  }
+
+  .accounts-mobile-section {
+    padding: 12px 14px;
+    border-bottom: 1px solid #edf0f3;
+  }
+
+  .accounts-mobile-section:last-child {
+    border-bottom: 0;
+  }
+
+  .accounts-mobile-section h3 {
+    margin: 0 0 9px;
+    color: #475467;
+    font-size: 12px;
+  }
+
+  .accounts-mobile-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .accounts-mobile-grid label {
+    min-width: 0;
+    gap: 5px;
+    font-size: 11px;
+  }
+
+  .accounts-mobile-grid label.wide {
+    grid-column: 1 / -1;
+  }
+
+  .accounts-mobile-grid input {
+    height: 38px;
+    min-width: 0;
+    padding: 7px 8px;
+    font-size: 14px;
+  }
+
+  .accounts-mobile-auto span {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 7px 9px;
+    border: 1px solid #dbeafe;
+    border-radius: 9px;
+    background: #f8fbff;
+    color: #175cd3;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .accounts-mobile-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 9px 10px;
+    border-radius: 9px;
+    font-size: 12px;
+  }
+
+  .accounts-mobile-total strong {
+    font-size: 14px;
+  }
+
+  .accounts-mobile-total.income {
+    background: #f6fffb;
+    color: #067647;
+  }
+
+  .accounts-mobile-total.expense {
+    background: #fffaf5;
+    color: #b54708;
+  }
+
+  .accounts-mobile-year-total {
+    display: grid;
+    grid-template-columns: 1fr repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    align-items: center;
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #f4f6f8;
+  }
+
+  .accounts-mobile-year-total > strong {
+    font-size: 13px;
+  }
+
+  .accounts-mobile-year-total div {
+    min-width: 0;
+    text-align: right;
+  }
+
+  .accounts-mobile-year-total span,
+  .accounts-mobile-year-total b {
+    display: block;
+  }
+
+  .accounts-mobile-year-total span {
+    color: #667085;
+    font-size: 9px;
+  }
+
+  .accounts-mobile-year-total b {
+    margin-top: 2px;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .accounts-mobile-year-total .negative b {
+    color: #b42318;
+  }
+
+  .accounts-note {
+    font-size: 10.5px;
+  }
+}
+
+@media (max-width: 520px) {
+  .accounts-mobile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .accounts-mobile-year-total {
+    grid-template-columns: 1fr;
+  }
+
+  .accounts-mobile-year-total div {
+    display: flex;
+    justify-content: space-between;
+    text-align: left;
+  }
+
+  .accounts-mobile-year-total b {
+    font-size: 13px;
+  }
+}
