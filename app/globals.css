@@ -3933,3 +3933,590 @@ h3 { margin-bottom: 8px; }
     font-size: 12px;
   }
 }
+
+
+/* v0.13.0 · Autónomo agrupado y cuentas personales */
+.nav-group {
+  display: grid;
+  gap: 4px;
+}
+
+.sidebar nav .nav-group-toggle {
+  justify-content: space-between;
+  color: #d4dae2;
+  font-weight: 760;
+}
+
+.sidebar nav .nav-group-toggle.active-group {
+  color: white;
+}
+
+.nav-group-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-chevron {
+  font-size: 14px;
+  transition: transform .16s ease;
+}
+
+.nav-chevron.open {
+  transform: rotate(180deg);
+}
+
+.nav-submenu {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 4px 14px;
+  padding-left: 9px;
+  border-left: 1px solid rgba(255,255,255,.1);
+}
+
+.sidebar nav .nav-submenu button {
+  padding: 9px 10px;
+  font-size: 12px;
+}
+
+.personal-finance-header {
+  align-items: center;
+}
+
+.personal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.personal-sync-status {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #667085;
+  font-size: 9px;
+  font-weight: 760;
+}
+
+.personal-sync-status.saved {
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.personal-sync-status.saving {
+  background: #eff6ff;
+  color: #175cd3;
+}
+
+.personal-sync-status.error {
+  background: #fff7ed;
+  color: #b54708;
+}
+
+.personal-period {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+}
+
+.personal-period > input {
+  width: 180px;
+  height: 34px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.personal-period > strong {
+  margin-left: auto;
+  color: #475467;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.personal-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.personal-kpis article,
+.personal-quick-stats article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+}
+
+.personal-kpis article {
+  padding: 16px;
+}
+
+.personal-kpis span,
+.personal-kpis strong,
+.personal-kpis small,
+.personal-quick-stats span,
+.personal-quick-stats strong {
+  display: block;
+}
+
+.personal-kpis span,
+.personal-quick-stats span {
+  color: #667085;
+  font-size: 10px;
+}
+
+.personal-kpis strong {
+  margin-top: 6px;
+  overflow: hidden;
+  font-size: 22px;
+  letter-spacing: -.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personal-kpis small {
+  margin-top: 5px;
+  color: #8b95a3;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.personal-kpis .personal-balance {
+  border-color: rgba(16,185,129,.18);
+  background: #f6fffb;
+}
+
+.personal-kpis .personal-balance strong {
+  color: #067647;
+}
+
+.personal-kpis .personal-balance.negative {
+  border-color: rgba(220,38,38,.18);
+  background: #fff8f8;
+}
+
+.personal-kpis .personal-balance.negative strong {
+  color: #b42318;
+}
+
+.personal-quick-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.personal-quick-stats article {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.personal-quick-stats strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personal-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, .8fr) minmax(0, 1.2fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.personal-entry-panel,
+.personal-category-panel,
+.personal-movements-panel,
+.personal-recurring-panel {
+  min-width: 0;
+}
+
+.personal-entry-panel {
+  padding: 18px;
+}
+
+.personal-type-switch {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #f2f4f7;
+}
+
+.personal-type-switch button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.personal-type-switch button.active {
+  background: white;
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(15,23,42,.08);
+}
+
+.personal-entry-form {
+  margin-bottom: 12px;
+}
+
+.personal-entry-form .full-width {
+  grid-column: 1 / -1;
+}
+
+.personal-monthly-toggle {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 4px 0 14px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+}
+
+.personal-monthly-toggle input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.personal-monthly-toggle span,
+.personal-monthly-toggle strong,
+.personal-monthly-toggle small {
+  display: block;
+}
+
+.personal-monthly-toggle strong {
+  font-size: 10px;
+}
+
+.personal-monthly-toggle small {
+  margin-top: 2px;
+  color: #7c8796;
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.personal-save {
+  width: 100%;
+}
+
+.personal-category-panel {
+  padding: 18px;
+}
+
+.personal-category-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.personal-category-columns h3 {
+  margin: 0 0 10px;
+  color: #475467;
+  font-size: 11px;
+}
+
+.personal-category-row {
+  margin-bottom: 10px;
+}
+
+.personal-category-row > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.personal-category-row span {
+  overflow: hidden;
+  color: #667085;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personal-category-row strong {
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.personal-category-bar {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef1f4;
+}
+
+.personal-category-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #0f766e;
+}
+
+.personal-category-row.expense .personal-category-bar i {
+  background: #b45309;
+}
+
+.personal-movements-panel,
+.personal-recurring-panel {
+  margin-bottom: 14px;
+  padding: 18px;
+}
+
+.personal-movement-list,
+.personal-recurring-list {
+  display: grid;
+  gap: 6px;
+}
+
+.personal-movement-list article {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto 28px;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #edf0f3;
+  border-radius: 10px;
+}
+
+.personal-movement-icon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.personal-movement-icon.income {
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.personal-movement-icon.expense {
+  background: #fff7ed;
+  color: #b54708;
+}
+
+.personal-movement-main {
+  min-width: 0;
+}
+
+.personal-movement-main strong,
+.personal-movement-main span {
+  display: block;
+  min-width: 0;
+}
+
+.personal-movement-main strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personal-movement-main span {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #7c8796;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personal-movement-amount {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.personal-movement-amount.income,
+.personal-recurring-list strong.income {
+  color: #067647;
+}
+
+.personal-movement-amount.expense,
+.personal-recurring-list strong.expense {
+  color: #b54708;
+}
+
+.personal-delete {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #98a2b3;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.personal-delete:hover {
+  background: #fef3f2;
+  color: var(--danger);
+}
+
+.personal-recurring-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto 28px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #edf0f3;
+  border-radius: 10px;
+}
+
+.personal-recurring-list > article > strong {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.personal-recurring-toggle {
+  min-width: 62px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #667085;
+  font-size: 8px;
+  font-weight: 760;
+}
+
+.personal-recurring-toggle.active {
+  border-color: #a6f4c5;
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.personal-empty {
+  margin: 0;
+  padding: 26px 10px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.personal-footnote {
+  margin: 2px 0 0;
+  color: #7c8796;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1050px) {
+  .personal-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .personal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .sidebar nav .nav-submenu button {
+    padding: 10px 11px;
+    font-size: 12px;
+  }
+
+  .personal-finance-header {
+    align-items: flex-start;
+  }
+
+  .personal-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .personal-period {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .personal-period > input {
+    width: 100%;
+    height: 38px;
+    font-size: 12px;
+  }
+
+  .personal-period > strong {
+    margin-left: 0;
+  }
+
+  .personal-kpis,
+  .personal-quick-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .personal-kpis article {
+    padding: 11px;
+  }
+
+  .personal-kpis strong {
+    font-size: 18px;
+  }
+
+  .personal-quick-stats article {
+    display: block;
+    padding: 10px;
+  }
+
+  .personal-quick-stats strong {
+    margin-top: 4px;
+    font-size: 11px;
+  }
+
+  .personal-category-columns {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .personal-movement-list article {
+    grid-template-columns: 28px minmax(0, 1fr) 26px;
+  }
+
+  .personal-movement-amount {
+    grid-column: 2 / -1;
+    padding-top: 5px;
+    border-top: 1px solid #edf0f3;
+    font-size: 12px;
+  }
+
+  .personal-recurring-list article {
+    grid-template-columns: minmax(0, 1fr) auto 28px;
+  }
+
+  .personal-recurring-list > article > strong {
+    grid-column: 1 / 2;
+  }
+
+  .personal-recurring-toggle {
+    grid-column: 2 / 3;
+    grid-row: 1 / 3;
+  }
+}
