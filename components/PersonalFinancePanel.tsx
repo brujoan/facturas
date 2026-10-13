@@ -27,7 +27,7 @@ type ExpenseField =
   | "freelanceExpense"
   | "extraExpense";
 
-type BreakdownField = ExpenseField | "extraIncome";
+type BreakdownField = ExpenseField | "freelanceIncome" | "extraIncome";
 
 type BreakdownItem = {
   id: string;
@@ -39,6 +39,7 @@ type BreakdownItem = {
 type AccountMonth = {
   id: string;
   salary: number;
+  freelanceIncome: number;
   extraIncome: number;
   extraIncomeReason: string;
   salaryReason?: string;
@@ -137,6 +138,7 @@ function blankMonth(id: string): AccountMonth {
   return {
     id,
     salary: 0,
+    freelanceIncome: 0,
     extraIncome: 0,
     extraIncomeReason: "",
     salaryReason: "",
@@ -171,14 +173,6 @@ function mergeById(remote: AccountMonth[], local: AccountMonth[]) {
   return [...map.values()];
 }
 
-function invoiceFreelanceIncomeWithoutVat(invoice: Invoice) {
-  return money(invoice.lines.reduce((sum, line) => {
-    const base = Number(line.quantity || 0) * Number(line.unitPrice || 0);
-    const withholding = base * (Number(line.withholding || 0) / 100);
-    return sum + base - withholding;
-  }, 0));
-}
-
 function appendReason(current: string, next: string) {
   const clean = next.trim();
   if (!clean) return current;
@@ -188,6 +182,7 @@ function appendReason(current: string, next: string) {
 }
 
 const breakdownFields: BreakdownField[] = [
+  "freelanceIncome",
   "extraIncome",
   "monthlyPayments",
   "insurance",
@@ -301,7 +296,16 @@ function migrateLegacy(movements: LegacyMovement[]): AccountMonth[] {
     if (movement.type === "income") {
       if (category === "Nómina") {
         row.salary = money(row.salary + amount);
-      } else if (category !== "Autónomo") {
+      } else if (category === "Autónomo") {
+        row.freelanceIncome = money(row.freelanceIncome + amount);
+        row.breakdowns = {
+          ...(row.breakdowns || {}),
+          freelanceIncome: [
+            ...(row.breakdowns?.freelanceIncome || []),
+            { id: movement.id || uid(), concept: concept || "Autónomo", amount, date: movement.date }
+          ]
+        };
+      } else {
         row.extraIncome = money(row.extraIncome + amount);
         row.extraIncomeReason = appendReason(row.extraIncomeReason, concept || category);
       }
@@ -325,14 +329,15 @@ function migrateLegacy(movements: LegacyMovement[]): AccountMonth[] {
   return [...map.values()];
 }
 
-export default function PersonalFinancePanel({ invoices, amountsVisible, onToggleAmounts }: Props) {
+export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }: Props) {
   const [year, setYear] = useState(currentYear());
   const [months, setMonths] = useState<AccountMonth[]>([]);
   const [ready, setReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"local" | "saving" | "saved" | "error">("local");
   const [breakdownEditor, setBreakdownEditor] = useState<BreakdownEditor | null>(null);
+  const [salaryDateEditor, setSalaryDateEditor] = useState<{ monthId: string; monthName: string; date: string } | null>(null);
   const [quickType, setQuickType] = useState<"income" | "expense">("expense");
-  const [quickSection, setQuickSection] = useState<"salary" | "extraIncome" | ExpenseField>("monthlyPayments");
+  const [quickSection, setQuickSection] = useState<"salary" | "freelanceIncome" | "extraIncome" | ExpenseField>("monthlyPayments");
   const [quickDate, setQuickDate] = useState(todayISO());
   const [quickAmount, setQuickAmount] = useState("");
   const [quickConcept, setQuickConcept] = useState("");
@@ -446,23 +451,6 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
     return () => window.clearTimeout(timer);
   }, [months, ready]);
 
-  const freelanceByMonth = useMemo(() => {
-    const totals = new Map<string, number>();
-
-    for (const invoice of invoices) {
-      if (invoice.status !== "Cobrada") continue;
-      const date = invoice.collectionDate || invoice.issueDate;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-      const monthId = cycleMonthForDate(date, months);
-      totals.set(
-        monthId,
-        money((totals.get(monthId) || 0) + invoiceFreelanceIncomeWithoutVat(invoice))
-      );
-    }
-
-    return totals;
-  }, [invoices, months]);
-
   const lastMovementDate = useMemo(() => {
     const dates: string[] = [];
 
@@ -475,14 +463,8 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
       }
     }
 
-    for (const invoice of invoices) {
-      if (invoice.status !== "Cobrada") continue;
-      const date = invoice.collectionDate || invoice.issueDate;
-      if (date) dates.push(date);
-    }
-
     return dates.sort().at(-1) || "";
-  }, [months, invoices]);
+  }, [months]);
 
   const payCycleRanges = useMemo(() => {
     const salaryRows = months
@@ -504,7 +486,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
     return monthNames.map((name, index) => {
       const id = `${year}-${String(index + 1).padStart(2, "0")}`;
       const stored = months.find((item) => item.id === id) || blankMonth(id);
-      const freelance = freelanceByMonth.get(id) || 0;
+      const freelance = stored.freelanceIncome;
       const totalIncome = money(stored.salary + freelance + stored.extraIncome);
       const totalExpense = money(
         stored.monthlyPayments +
@@ -526,7 +508,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         savings
       };
     });
-  }, [year, months, freelanceByMonth]);
+  }, [year, months]);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -562,6 +544,34 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
       }
     );
   }, [rows]);
+
+  const averageMonthCount = useMemo(() =>
+    rows.filter((row) =>
+      row.salary !== 0 ||
+      row.freelance !== 0 ||
+      row.extraIncome !== 0 ||
+      row.totalExpense !== 0
+    ).length
+  , [rows]);
+
+  const averages = useMemo(() => {
+    const divisor = averageMonthCount || 1;
+    return {
+      salary: money(totals.salary / divisor),
+      freelance: money(totals.freelance / divisor),
+      extraIncome: money(totals.extraIncome / divisor),
+      totalIncome: money(totals.totalIncome / divisor),
+      monthlyPayments: money(totals.monthlyPayments / divisor),
+      insurance: money(totals.insurance / divisor),
+      leisure: money(totals.leisure / divisor),
+      sport: money(totals.sport / divisor),
+      carExpense: money(totals.carExpense / divisor),
+      freelanceExpense: money(totals.freelanceExpense / divisor),
+      extraExpense: money(totals.extraExpense / divisor),
+      totalExpense: money(totals.totalExpense / divisor),
+      savings: money(totals.savings / divisor)
+    };
+  }, [totals, averageMonthCount]);
 
   function setField<K extends keyof AccountMonth>(
     monthId: string,
@@ -758,6 +768,51 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
     setBreakdownEditor(null);
   }
 
+  function saveSalaryDate() {
+    if (!salaryDateEditor || !/^\d{4}-\d{2}-\d{2}$/.test(salaryDateEditor.date)) return;
+
+    const sourceId = salaryDateEditor.monthId;
+    const targetId = salaryDateEditor.date.slice(0, 7);
+
+    setMonths((current) => {
+      const source = current.find((item) => item.id === sourceId) || blankMonth(sourceId);
+      let updated = [...current];
+
+      if (targetId === sourceId) {
+        const next = { ...source, salaryDate: salaryDateEditor.date, updatedAt: nowISO() };
+        const sourceIndex = updated.findIndex((item) => item.id === sourceId);
+        updated = sourceIndex < 0
+          ? [...updated, next]
+          : updated.map((item, index) => index === sourceIndex ? next : item);
+      } else {
+        const target = current.find((item) => item.id === targetId) || blankMonth(targetId);
+        const movedTarget = {
+          ...target,
+          salary: money(target.salary + source.salary),
+          salaryReason: appendReason(target.salaryReason || "", source.salaryReason || ""),
+          salaryDate: salaryDateEditor.date,
+          updatedAt: nowISO()
+        };
+        const clearedSource = {
+          ...source,
+          salary: 0,
+          salaryReason: "",
+          salaryDate: "",
+          updatedAt: nowISO()
+        };
+
+        updated = updated
+          .filter((item) => item.id !== sourceId && item.id !== targetId)
+          .concat(clearedSource, movedTarget);
+      }
+
+      return rebalanceDatedBreakdowns(updated);
+    });
+
+    setYear(Number(targetId.slice(0, 4)));
+    setSalaryDateEditor(null);
+  }
+
   function addQuickMovement(event: React.FormEvent) {
     event.preventDefault();
 
@@ -923,12 +978,13 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
 
           <select
             value={quickSection}
-            onChange={(e) => setQuickSection(e.target.value as "salary" | "extraIncome" | ExpenseField)}
+            onChange={(e) => setQuickSection(e.target.value as "salary" | "freelanceIncome" | "extraIncome" | ExpenseField)}
             aria-label="Sección"
           >
             {quickType === "income" ? (
               <>
                 <option value="salary">Nómina</option>
+                <option value="freelanceIncome">Autónomo</option>
                 <option value="extraIncome">Ingreso extra</option>
               </>
             ) : (
@@ -1000,13 +1056,19 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                 <tr key={row.id} className={row.id === new Date().toISOString().slice(0, 7) ? "current-month" : ""}>
                   <th>
                     <span>{row.name}</span>
-                    {payCycleRanges.get(row.id) && <small>{payCycleRanges.get(row.id)}</small>}
+                    {(row.salary || row.salaryDate) && (
+                      <button
+                        type="button"
+                        className="accounts-cycle-date-button"
+                        onClick={() => setSalaryDateEditor({ monthId: row.id, monthName: row.name, date: row.salaryDate || "" })}
+                        title="Cambiar fecha de nómina"
+                      >
+                        {payCycleRanges.get(row.id) || (row.salaryDate ? shortDate(row.salaryDate) : "Fecha nómina")} · editar
+                      </button>
+                    )}
                   </th>
                   <td>{amountCell(row.id, "salary", row.salary, `Nómina de ${row.name}`)}</td>
-                  <td className="accounts-auto-cell" title="Facturas cobradas, sin IVA">
-                    <strong>{shown(row.freelance)}</strong>
-                    <small>sin IVA</small>
-                  </td>
+                  <td>{breakdownCell(row.id, row.name, "freelanceIncome", "Autónomo", row.freelance)}</td>
                   <td>{breakdownCell(row.id, row.name, "extraIncome", "Ingreso extra", row.extraIncome)}</td>
                   <td className="accounts-total income">{shown(row.totalIncome)}</td>
                   <td>{breakdownCell(row.id, row.name, "monthlyPayments", "Mensualidades", row.monthlyPayments)}</td>
@@ -1039,6 +1101,22 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
                 <td>{shown(totals.totalExpense)}</td>
                 <td className={totals.savings < 0 ? "negative" : ""}>{shown(totals.savings)}</td>
               </tr>
+              <tr className="accounts-year-average">
+                <th>MEDIA · {averageMonthCount || 0}m</th>
+                <td>{shown(averages.salary)}</td>
+                <td>{shown(averages.freelance)}</td>
+                <td>{shown(averages.extraIncome)}</td>
+                <td>{shown(averages.totalIncome)}</td>
+                <td>{shown(averages.monthlyPayments)}</td>
+                <td>{shown(averages.insurance)}</td>
+                <td>{shown(averages.leisure)}</td>
+                <td>{shown(averages.sport)}</td>
+                <td>{shown(averages.carExpense)}</td>
+                <td>{shown(averages.freelanceExpense)}</td>
+                <td>{shown(averages.extraExpense)}</td>
+                <td>{shown(averages.totalExpense)}</td>
+                <td className={averages.savings < 0 ? "negative" : ""}>{shown(averages.savings)}</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -1053,7 +1131,15 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
             <header>
               <div>
                 <strong>{row.name}</strong>
-                {payCycleRanges.get(row.id) && <small>{payCycleRanges.get(row.id)}</small>}
+                {(row.salary || row.salaryDate) && (
+                  <button
+                    type="button"
+                    className="accounts-cycle-date-button"
+                    onClick={() => setSalaryDateEditor({ monthId: row.id, monthName: row.name, date: row.salaryDate || "" })}
+                  >
+                    {payCycleRanges.get(row.id) || (row.salaryDate ? shortDate(row.salaryDate) : "Fecha nómina")} · editar
+                  </button>
+                )}
               </div>
               <span className={row.savings < 0 ? "negative" : ""}>
                 Ahorro {shown(row.savings)}
@@ -1064,7 +1150,7 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
               <h3>Ingresos</h3>
               <div className="accounts-mobile-grid">
                 <label>Nómina{amountCell(row.id, "salary", row.salary, `Nómina de ${row.name}`)}</label>
-                <label className="accounts-mobile-auto">Autónomo <small>sin IVA</small><span>{shown(row.freelance)}</span></label>
+                <label>Autónomo{breakdownCell(row.id, row.name, "freelanceIncome", "Autónomo", row.freelance)}</label>
                 <label>Ingreso extra{breakdownCell(row.id, row.name, "extraIncome", "Ingreso extra", row.extraIncome)}</label>
               </div>
               <div className="accounts-mobile-total income">
@@ -1098,11 +1184,50 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
           <div><span>Gastos</span><b>{shown(totals.totalExpense)}</b></div>
           <div className={totals.savings < 0 ? "negative" : ""}><span>Ahorro</span><b>{shown(totals.savings)}</b></div>
         </article>
+        <article className="accounts-mobile-year-total accounts-mobile-average">
+          <strong>MEDIA · {averageMonthCount || 0} meses</strong>
+          <div><span>Ingresos</span><b>{shown(averages.totalIncome)}</b></div>
+          <div><span>Gastos</span><b>{shown(averages.totalExpense)}</b></div>
+          <div className={averages.savings < 0 ? "negative" : ""}><span>Ahorro</span><b>{shown(averages.savings)}</b></div>
+        </article>
       </div>
 
       <p className="accounts-note">
-        Los movimientos se asignan al ciclo abierto por la última nómina cobrada. Ingreso Autónomo = facturas cobradas menos IVA.
+        Los movimientos se asignan al ciclo abierto por la última nómina cobrada. Autónomo se registra manualmente al cobrarlo.
       </p>
+
+      {salaryDateEditor && (
+        <div className="accounts-breakdown-overlay" onMouseDown={() => setSalaryDateEditor(null)}>
+          <section
+            className="accounts-salary-date-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cambiar fecha de nómina"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">{salaryDateEditor.monthName} · nómina</p>
+                <h2>Fecha de cobro</h2>
+              </div>
+              <button className="accounts-breakdown-close" onClick={() => setSalaryDateEditor(null)} aria-label="Cerrar">×</button>
+            </header>
+            <div className="accounts-salary-date-body">
+              <input
+                type="date"
+                value={salaryDateEditor.date}
+                onChange={(e) => setSalaryDateEditor((current) => current ? { ...current, date: e.target.value } : current)}
+                aria-label="Fecha de cobro de la nómina"
+              />
+              <p>Al cambiarla se recalculan automáticamente los ciclos y se recolocan los movimientos fechados.</p>
+            </div>
+            <footer>
+              <button className="button secondary" onClick={() => setSalaryDateEditor(null)}>Cancelar</button>
+              <button className="button primary" onClick={saveSalaryDate}>Guardar fecha</button>
+            </footer>
+          </section>
+        </div>
+      )}
 
       {breakdownEditor && (
         <div className="accounts-breakdown-overlay" onMouseDown={() => setBreakdownEditor(null)}>

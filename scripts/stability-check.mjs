@@ -94,7 +94,7 @@ assert(styles.includes(".finance-kpis") && styles.includes(".invoice-status-sele
 assert(app.includes('tab === "cuentas"'), "La navegación debe incluir el apartado personal Cuentas.");
 assert(app.includes("nav-group-toggle") && app.includes("Autónomo"), "Los apartados profesionales deben agruparse en el desplegable Autónomo.");
 assert(personal.includes("Finanzas personales") && personal.includes("<h1>Cuentas</h1>"), "Cuentas debe tener una vista personal independiente.");
-assert(personal.includes('invoice.status !== "Cobrada"'), "Autónomo debe calcularse automáticamente desde facturas cobradas.");
+assert(!personal.includes('invoice.status !== "Cobrada"') && personal.includes('"freelanceIncome"'), "Autónomo debe registrarse manualmente y no derivarse de facturas cobradas.");
 assert(personal.includes("Nómina") && personal.includes("Ingreso extra") && personal.includes("Mensualidades") && personal.includes("Seguros") && personal.includes("Deporte"), "La tabla anual debe conservar las columnas del control personal.");
 assert(!personal.includes(">Motivo ing.<") && !personal.includes(">Motivo g.<"), "Ingreso extra y Gasto extra no deben ocupar columnas separadas de motivo.");
 assert(personal.includes("Ingreso total") && personal.includes("Gasto total") && personal.includes("Ahorro"), "La tabla debe calcular totales y ahorro mensual.");
@@ -108,8 +108,8 @@ assert(personal.includes("accounts-mobile-list") && personal.includes("accounts-
 assert(styles.includes("/* v0.14.1 · Cuentas sin scroll horizontal */"), "Cuentas debe incluir el ajuste de ancho completo.");
 assert(styles.includes(".accounts-table-scroll {\n  overflow-x: hidden;"), "La tabla de Cuentas no debe requerir desplazamiento horizontal en escritorio.");
 assert(styles.includes("@media (max-width: 900px)") && styles.includes(".accounts-table-panel {\n    display: none;"), "En pantallas estrechas la tabla debe sustituirse por fichas legibles.");
-assert(personal.includes("invoiceFreelanceIncomeWithoutVat"), "El ingreso de autónomo en Cuentas debe excluir el IVA.");
-assert(personal.includes("base - withholding"), "El ingreso de autónomo sin IVA debe conservar la retención aplicada.");
+assert(!personal.includes("invoiceFreelanceIncomeWithoutVat"), "Cuentas no debe calcular automáticamente el ingreso de Autónomo desde facturas.");
+assert(personal.includes('"freelanceIncome"') && personal.includes('value="freelanceIncome"'), "El ingreso de Autónomo debe registrarse manualmente y estar disponible en el alta rápida.");
 assert(personal.includes("freelanceExpense"), "Cuentas debe incluir Autónomo como categoría de gasto.");
 assert(personal.includes("breakdowns?: Partial<Record<BreakdownField, BreakdownItem[]>>"), "Ingresos extra y gastos deben poder guardar un desglose por conceptos.");
 assert(personal.includes("openBreakdown") && personal.includes("Guardar desglose"), "La tabla debe permitir abrir y guardar el detalle de cada gasto.");
@@ -118,13 +118,13 @@ assert(styles.includes("/* v0.15.0 · Cuentas legibles y gastos desglosables */"
 assert(styles.includes(".accounts-breakdown-modal") && styles.includes(".accounts-breakdown-button"), "El desglose de gastos debe tener interfaz propia.");
 assert(personal.includes("accounts-quick-movement") && personal.includes("addQuickMovement"), "Cuentas debe permitir añadir movimientos rápidamente junto al selector de año.");
 assert(personal.includes('value="expense"') && personal.includes('value="income"'), "El alta rápida debe permitir elegir entre gasto e ingreso.");
-assert(personal.includes('value="monthlyPayments"') && personal.includes('value="freelanceExpense"') && personal.includes('value="extraIncome"'), "El alta rápida debe permitir elegir la sección correspondiente.");
+assert(personal.includes('value="monthlyPayments"') && personal.includes('value="freelanceExpense"') && personal.includes('value="freelanceIncome"') && personal.includes('value="extraIncome"'), "El alta rápida debe permitir elegir la sección correspondiente.");
 assert(personal.includes("Falta fecha, importe o concepto"), "El alta rápida debe exigir fecha, importe y concepto.");
 assert(personal.includes("Sin desglosar") && personal.includes("nextItems"), "Los gastos añadidos rápidamente deben integrarse en el desglose sin perder importes anteriores.");
 assert(styles.includes("/* v0.15.1 · Alta rápida de movimientos */") && styles.includes(".accounts-quick-movement"), "El acceso rápido debe tener estilos compactos y responsive.");
 assert(personal.includes('type="date"') && personal.includes("quickDate") && personal.includes("todayISO()"), "El alta rápida debe incluir fecha y usar hoy como valor inicial.");
 assert(personal.includes("cycleMonthForDate(quickDate, months)") && personal.includes("setYear(targetYear)"), "La fecha del movimiento debe decidir el ciclo y año donde se guarda.");
-assert(personal.includes('type BreakdownField = ExpenseField | "extraIncome"'), "Ingreso extra debe reutilizar el sistema de desglose.");
+assert(personal.includes('type BreakdownField = ExpenseField | "freelanceIncome" | "extraIncome"'), "Autónomo e Ingreso extra deben reutilizar el sistema de desglose.");
 assert(personal.includes('breakdownCell(row.id, row.name, "extraIncome"') && personal.includes('breakdownCell(row.id, row.name, "extraExpense"'), "Ingreso extra y Gasto extra deben mostrar un único total con desglose.");
 assert(personal.includes("date: quickDate") && personal.includes('className="accounts-breakdown-date"'), "Los movimientos desglosados añadidos rápidamente deben conservar y mostrar su fecha.");
 assert(styles.includes("/* v0.16.0 · Fecha rápida, extras desglosados y tipografía mayor */"), "Cuentas debe aprovechar las columnas eliminadas para aumentar la tipografía.");
@@ -133,9 +133,15 @@ assert(personal.includes("salaryDate?: string") && personal.includes("cycleMonth
 assert(personal.includes("rebalanceDatedBreakdowns") && personal.includes("salaryDate: quickDate"), "Registrar una nómina debe reajustar los movimientos fechados al ciclo correcto.");
 assert(personal.includes("payCycleRanges") && personal.includes("dayBefore"), "La fila mensual debe mostrar el rango real del ciclo de cobro.");
 assert(personal.includes("lastMovementDate") && personal.includes("Último:"), "Cuentas debe mostrar la fecha del último movimiento registrado.");
-assert(personal.includes("cycleMonthForDate(date, months)"), "Los ingresos automáticos de autónomo deben seguir los ciclos de nómina.");
+assert(personal.includes('breakdownCell(row.id, row.name, "freelanceIncome"'), "El ingreso de Autónomo debe ser editable y desglosable como movimiento manual.");
 assert(styles.includes("/* v0.17.0 · Ciclos de nómina, coche y guía de celda */"), "Cuentas debe incluir estilos para ciclos y orientación visual.");
 assert(styles.includes("tr:not(.accounts-year-total):hover") && styles.includes(":nth-child(14):hover"), "La tabla debe resaltar fila y columna al pasar por una casilla.");
+assert(personal.includes("salaryDateEditor") && personal.includes("saveSalaryDate") && personal.includes("Cambiar fecha de nómina"), "La fecha de nómina debe poder corregirse después y recalcular los ciclos.");
+assert(personal.includes("accounts-year-average") && personal.includes("averageMonthCount") && personal.includes("averages"), "Debajo de los totales debe mostrarse una media mensual.");
+assert(personal.includes("rows.filter((row)") && personal.includes("row.totalExpense !== 0"), "La media debe calcularse solo con meses que tienen datos.");
+assert(styles.includes("/* v0.18.0 · Autónomo manual, fecha de nómina editable y tabla pulida */"), "Cuentas debe aplicar el pulido visual de importes y columnas.");
+assert(styles.includes("font-variant-numeric: tabular-nums") && styles.includes("text-overflow: clip"), "Los importes deben mantenerse alineados y contenidos dentro de su columna.");
+assert(styles.includes(".accounts-salary-date-modal") && styles.includes(".accounts-year-average"), "La edición de nómina y la fila de media deben tener estilos propios.");
 
 
 
