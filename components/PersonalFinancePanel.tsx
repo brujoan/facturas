@@ -81,6 +81,7 @@ type BreakdownEditor = {
 
 const MONTHS_KEY = "facturas_personal_account_months_v2";
 const LEGACY_MOVEMENTS_KEY = "facturas_personal_movements_v1";
+const OPENING_SAVINGS_2026 = 11810;
 
 const monthNames = [
   "Enero",
@@ -127,6 +128,15 @@ function currency(value: number) {
     style: "currency",
     currency: "EUR"
   }).format(money(value));
+}
+
+function currencyRounded(value: number) {
+  return new Intl.NumberFormat("es-ES", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(Math.round(Number(value || 0)));
 }
 
 function timestamp(value?: string) {
@@ -510,8 +520,59 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
     });
   }, [year, months]);
 
+  const accountingRows = useMemo(
+    () => year === 2026 ? rows.slice(8) : rows,
+    [year, rows]
+  );
+
+  const openingSavings = year === 2026 ? OPENING_SAVINGS_2026 : 0;
+
   const totals = useMemo(() => {
-    return rows.reduce(
+    return accountingRows.reduce(
+      (acc, row) => ({
+        salary: money(acc.salary + row.salary),
+        freelance: money(acc.freelance + row.freelance),
+        extraIncome: money(acc.extraIncome + row.extraIncome),
+        totalIncome: money(acc.totalIncome + row.totalIncome),
+        monthlyPayments: money(acc.monthlyPayments + row.monthlyPayments),
+        insurance: money(acc.insurance + row.insurance),
+        leisure: money(acc.leisure + row.leisure),
+        sport: money(acc.sport + row.sport),
+        carExpense: money(acc.carExpense + row.carExpense),
+        freelanceExpense: money(acc.freelanceExpense + row.freelanceExpense),
+        extraExpense: money(acc.extraExpense + row.extraExpense),
+        totalExpense: money(acc.totalExpense + row.totalExpense),
+        savings: money(acc.savings + row.savings)
+      }),
+      {
+        salary: 0,
+        freelance: 0,
+        extraIncome: 0,
+        totalIncome: 0,
+        monthlyPayments: 0,
+        insurance: 0,
+        leisure: 0,
+        sport: 0,
+        carExpense: 0,
+        freelanceExpense: 0,
+        extraExpense: 0,
+        totalExpense: 0,
+        savings: openingSavings
+      }
+    );
+  }, [accountingRows, openingSavings]);
+
+  const averageMonthCount = useMemo(() =>
+    accountingRows.filter((row) =>
+      row.salary !== 0 ||
+      row.freelance !== 0 ||
+      row.extraIncome !== 0 ||
+      row.totalExpense !== 0
+    ).length
+  , [accountingRows]);
+
+  const averageTotals = useMemo(
+    () => accountingRows.reduce(
       (acc, row) => ({
         salary: money(acc.salary + row.salary),
         freelance: money(acc.freelance + row.freelance),
@@ -542,36 +603,28 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
         totalExpense: 0,
         savings: 0
       }
-    );
-  }, [rows]);
-
-  const averageMonthCount = useMemo(() =>
-    rows.filter((row) =>
-      row.salary !== 0 ||
-      row.freelance !== 0 ||
-      row.extraIncome !== 0 ||
-      row.totalExpense !== 0
-    ).length
-  , [rows]);
+    ),
+    [accountingRows]
+  );
 
   const averages = useMemo(() => {
     const divisor = averageMonthCount || 1;
     return {
-      salary: money(totals.salary / divisor),
-      freelance: money(totals.freelance / divisor),
-      extraIncome: money(totals.extraIncome / divisor),
-      totalIncome: money(totals.totalIncome / divisor),
-      monthlyPayments: money(totals.monthlyPayments / divisor),
-      insurance: money(totals.insurance / divisor),
-      leisure: money(totals.leisure / divisor),
-      sport: money(totals.sport / divisor),
-      carExpense: money(totals.carExpense / divisor),
-      freelanceExpense: money(totals.freelanceExpense / divisor),
-      extraExpense: money(totals.extraExpense / divisor),
-      totalExpense: money(totals.totalExpense / divisor),
-      savings: money(totals.savings / divisor)
+      salary: money(averageTotals.salary / divisor),
+      freelance: money(averageTotals.freelance / divisor),
+      extraIncome: money(averageTotals.extraIncome / divisor),
+      totalIncome: money(averageTotals.totalIncome / divisor),
+      monthlyPayments: money(averageTotals.monthlyPayments / divisor),
+      insurance: money(averageTotals.insurance / divisor),
+      leisure: money(averageTotals.leisure / divisor),
+      sport: money(averageTotals.sport / divisor),
+      carExpense: money(averageTotals.carExpense / divisor),
+      freelanceExpense: money(averageTotals.freelanceExpense / divisor),
+      extraExpense: money(averageTotals.extraExpense / divisor),
+      totalExpense: money(averageTotals.totalExpense / divisor),
+      savings: money(averageTotals.savings / divisor)
     };
-  }, [totals, averageMonthCount]);
+  }, [averageTotals, averageMonthCount]);
 
   function setField<K extends keyof AccountMonth>(
     monthId: string,
@@ -884,6 +937,10 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
     return amountsVisible ? currency(value) : "•••• €";
   }
 
+  function shownRounded(value: number) {
+    return amountsVisible ? currencyRounded(value) : "•••• €";
+  }
+
   if (!ready) {
     return <div className="panel">Cargando tus cuentas…</div>;
   }
@@ -1042,17 +1099,28 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
                 <th>Ing. extra</th>
                 <th>Ing. total</th>
                 <th>Mens.</th>
-                <th>Seg.</th>
+                <th>Seguro</th>
                 <th>Ocio</th>
-                <th>Dep.</th>
+                <th>Deport.</th>
                 <th>Coche</th>
                 <th>Autón.</th>
-                <th>G. extra</th>
-                <th>G. total</th>
+                <th>Otros</th>
+                <th>Total</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {year === 2026 && (
+                <tr className="accounts-opening-balance">
+                  <th>
+                    <span>Agosto</span>
+                    <small>Ahorros anteriores</small>
+                  </th>
+                  <td colSpan={12}>—</td>
+                  <td className="accounts-savings">{shownRounded(OPENING_SAVINGS_2026)}</td>
+                </tr>
+              )}
+
+              {accountingRows.map((row) => (
                 <tr key={row.id} className={row.id === new Date().toISOString().slice(0, 7) ? "current-month" : ""}>
                   <th>
                     <span>{row.name}</span>
@@ -1087,35 +1155,35 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
 
               <tr className="accounts-year-total">
                 <th>TOTAL {year}</th>
-                <td>{shown(totals.salary)}</td>
-                <td>{shown(totals.freelance)}</td>
-                <td>{shown(totals.extraIncome)}</td>
-                <td>{shown(totals.totalIncome)}</td>
-                <td>{shown(totals.monthlyPayments)}</td>
-                <td>{shown(totals.insurance)}</td>
-                <td>{shown(totals.leisure)}</td>
-                <td>{shown(totals.sport)}</td>
-                <td>{shown(totals.carExpense)}</td>
-                <td>{shown(totals.freelanceExpense)}</td>
-                <td>{shown(totals.extraExpense)}</td>
-                <td>{shown(totals.totalExpense)}</td>
-                <td className={totals.savings < 0 ? "negative" : ""}>{shown(totals.savings)}</td>
+                <td>{shownRounded(totals.salary)}</td>
+                <td>{shownRounded(totals.freelance)}</td>
+                <td>{shownRounded(totals.extraIncome)}</td>
+                <td>{shownRounded(totals.totalIncome)}</td>
+                <td>{shownRounded(totals.monthlyPayments)}</td>
+                <td>{shownRounded(totals.insurance)}</td>
+                <td>{shownRounded(totals.leisure)}</td>
+                <td>{shownRounded(totals.sport)}</td>
+                <td>{shownRounded(totals.carExpense)}</td>
+                <td>{shownRounded(totals.freelanceExpense)}</td>
+                <td>{shownRounded(totals.extraExpense)}</td>
+                <td>{shownRounded(totals.totalExpense)}</td>
+                <td className={totals.savings < 0 ? "negative" : ""}>{shownRounded(totals.savings)}</td>
               </tr>
               <tr className="accounts-year-average">
                 <th>MEDIA · {averageMonthCount || 0}m</th>
-                <td>{shown(averages.salary)}</td>
-                <td>{shown(averages.freelance)}</td>
-                <td>{shown(averages.extraIncome)}</td>
-                <td>{shown(averages.totalIncome)}</td>
-                <td>{shown(averages.monthlyPayments)}</td>
-                <td>{shown(averages.insurance)}</td>
-                <td>{shown(averages.leisure)}</td>
-                <td>{shown(averages.sport)}</td>
-                <td>{shown(averages.carExpense)}</td>
-                <td>{shown(averages.freelanceExpense)}</td>
-                <td>{shown(averages.extraExpense)}</td>
-                <td>{shown(averages.totalExpense)}</td>
-                <td className={averages.savings < 0 ? "negative" : ""}>{shown(averages.savings)}</td>
+                <td>{shownRounded(averages.salary)}</td>
+                <td>{shownRounded(averages.freelance)}</td>
+                <td>{shownRounded(averages.extraIncome)}</td>
+                <td>{shownRounded(averages.totalIncome)}</td>
+                <td>{shownRounded(averages.monthlyPayments)}</td>
+                <td>{shownRounded(averages.insurance)}</td>
+                <td>{shownRounded(averages.leisure)}</td>
+                <td>{shownRounded(averages.sport)}</td>
+                <td>{shownRounded(averages.carExpense)}</td>
+                <td>{shownRounded(averages.freelanceExpense)}</td>
+                <td>{shownRounded(averages.extraExpense)}</td>
+                <td>{shownRounded(averages.totalExpense)}</td>
+                <td className={averages.savings < 0 ? "negative" : ""}>{shownRounded(averages.savings)}</td>
               </tr>
             </tbody>
           </table>
@@ -1123,7 +1191,19 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
       </div>
 
       <div className="accounts-mobile-list">
-        {rows.map((row) => (
+        {year === 2026 && (
+          <article className="accounts-mobile-month accounts-mobile-opening">
+            <header>
+              <div>
+                <strong>Agosto</strong>
+                <small>Ahorros anteriores</small>
+              </div>
+              <span>Ahorro {shownRounded(OPENING_SAVINGS_2026)}</span>
+            </header>
+          </article>
+        )}
+
+        {accountingRows.map((row) => (
           <article
             key={`mobile-${row.id}`}
             className={`accounts-mobile-month ${row.id === new Date().toISOString().slice(0, 7) ? "current-month" : ""}`}
@@ -1163,12 +1243,12 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
               <h3>Gastos</h3>
               <div className="accounts-mobile-grid">
                 <label>Mensualidades{breakdownCell(row.id, row.name, "monthlyPayments", "Mensualidades", row.monthlyPayments)}</label>
-                <label>Seguros{breakdownCell(row.id, row.name, "insurance", "Seguros", row.insurance)}</label>
+                <label>Seguro{breakdownCell(row.id, row.name, "insurance", "Seguro", row.insurance)}</label>
                 <label>Ocio{breakdownCell(row.id, row.name, "leisure", "Ocio", row.leisure)}</label>
                 <label>Deporte{breakdownCell(row.id, row.name, "sport", "Deporte", row.sport)}</label>
                 <label>Coche{breakdownCell(row.id, row.name, "carExpense", "Coche", row.carExpense)}</label>
                 <label>Autónomo{breakdownCell(row.id, row.name, "freelanceExpense", "Autónomo", row.freelanceExpense)}</label>
-                <label>Gasto extra{breakdownCell(row.id, row.name, "extraExpense", "Gasto extra", row.extraExpense)}</label>
+                <label>Otros{breakdownCell(row.id, row.name, "extraExpense", "Otros", row.extraExpense)}</label>
               </div>
               <div className="accounts-mobile-total expense">
                 <span>Gasto total</span>
@@ -1180,15 +1260,15 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
 
         <article className="accounts-mobile-year-total">
           <strong>TOTAL {year}</strong>
-          <div><span>Ingresos</span><b>{shown(totals.totalIncome)}</b></div>
-          <div><span>Gastos</span><b>{shown(totals.totalExpense)}</b></div>
-          <div className={totals.savings < 0 ? "negative" : ""}><span>Ahorro</span><b>{shown(totals.savings)}</b></div>
+          <div><span>Ingresos</span><b>{shownRounded(totals.totalIncome)}</b></div>
+          <div><span>Gastos</span><b>{shownRounded(totals.totalExpense)}</b></div>
+          <div className={totals.savings < 0 ? "negative" : ""}><span>Ahorro</span><b>{shownRounded(totals.savings)}</b></div>
         </article>
         <article className="accounts-mobile-year-total accounts-mobile-average">
           <strong>MEDIA · {averageMonthCount || 0} meses</strong>
-          <div><span>Ingresos</span><b>{shown(averages.totalIncome)}</b></div>
-          <div><span>Gastos</span><b>{shown(averages.totalExpense)}</b></div>
-          <div className={averages.savings < 0 ? "negative" : ""}><span>Ahorro</span><b>{shown(averages.savings)}</b></div>
+          <div><span>Ingresos</span><b>{shownRounded(averages.totalIncome)}</b></div>
+          <div><span>Gastos</span><b>{shownRounded(averages.totalExpense)}</b></div>
+          <div className={averages.savings < 0 ? "negative" : ""}><span>Ahorro</span><b>{shownRounded(averages.savings)}</b></div>
         </article>
       </div>
 

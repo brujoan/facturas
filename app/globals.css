@@ -5993,3 +5993,55 @@ h3 { margin-bottom: 8px; }
     color: #667085;
   }
 }
+
+
+/* v0.18.1 · Inicio 2026 y totales compactos */
+.accounts-opening-balance th,
+.accounts-opening-balance td {
+  background: #f6f8fb;
+  border-top: 2px solid #cfd8e3;
+  border-bottom: 2px solid #cfd8e3;
+}
+
+.accounts-opening-balance th small {
+  color: #667085 !important;
+  font-size: 9px !important;
+  font-weight: 750 !important;
+}
+
+.accounts-opening-balance td[colspan] {
+  text-align: center;
+  color: #98a2b3;
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+
+.accounts-opening-balance .accounts-savings {
+  font-size: 13.5px;
+  font-weight: 850;
+}
+
+.accounts-mobile-opening {
+  background: #f6f8fb;
+  border: 1px solid #cfd8e3;
+}
+
+.accounts-mobile-opening > header {
+  border-bottom: 0;
+}
+
+.accounts-mobile-opening > header > span {
+  font-weight: 850;
+}
+
+.accounts-year-total td,
+.accounts-year-average td {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
+}
+
+@media (max-width: 900px) {
+  .accounts-mobile-opening > header {
+    padding-bottom: 12px;
+  }
+}
