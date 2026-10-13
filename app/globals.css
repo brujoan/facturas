@@ -5810,3 +5810,186 @@ h3 { margin-bottom: 8px; }
     font-size: 11px;
   }
 }
+
+
+/* v0.18.0 · Autónomo manual, fecha de nómina editable y tabla pulida */
+.accounts-table {
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-table th,
+.accounts-table td {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.accounts-table td {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.accounts-table input,
+.accounts-table button {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.accounts-table .accounts-money-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding-left: 3px;
+  padding-right: 3px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.015em;
+}
+
+.accounts-expense-cell {
+  width: 100%;
+  min-width: 0;
+}
+
+.accounts-expense-cell .accounts-money-input {
+  width: 100%;
+}
+
+.accounts-table .accounts-total,
+.accounts-table .accounts-savings,
+.accounts-table .accounts-year-total td,
+.accounts-table .accounts-year-average td {
+  padding-left: 3px;
+  padding-right: 3px;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+
+.accounts-table tr > *:nth-child(5),
+.accounts-table tr > *:nth-child(13) {
+  border-right: 2px solid #d3dbe5;
+}
+
+.accounts-table tr > *:nth-child(6),
+.accounts-table tr > *:nth-child(14) {
+  border-left: 2px solid #d3dbe5;
+}
+
+.accounts-table .accounts-total.income {
+  background: #f5fbf8;
+}
+
+.accounts-table .accounts-total.expense {
+  background: #fff8f2;
+}
+
+.accounts-cycle-date-button {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #667085;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.accounts-cycle-date-button:hover,
+.accounts-cycle-date-button:focus-visible {
+  color: #175cd3;
+  text-decoration: underline;
+  outline: none;
+}
+
+.accounts-year-average th,
+.accounts-year-average td {
+  border-top: 1px solid #cfd8e3;
+  background: #f8fafc;
+  color: #475467;
+  font-weight: 750;
+}
+
+.accounts-year-average th {
+  font-size: 10px !important;
+  letter-spacing: .01em;
+}
+
+.accounts-year-average td {
+  font-size: 12.5px !important;
+}
+
+.accounts-year-average .negative {
+  color: #b42318;
+}
+
+.accounts-salary-date-modal {
+  width: min(430px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+}
+
+.accounts-salary-date-modal > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.accounts-salary-date-modal > header h2 {
+  margin: 2px 0 0;
+  font-size: 21px;
+}
+
+.accounts-salary-date-body {
+  padding: 18px 20px;
+}
+
+.accounts-salary-date-body input {
+  width: 100%;
+  height: 42px;
+  padding: 8px 10px;
+  font-size: 15px;
+}
+
+.accounts-salary-date-body p {
+  margin: 9px 0 0;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.accounts-salary-date-modal > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.accounts-mobile-average {
+  background: #fafbfc;
+  border-style: dashed;
+}
+
+@media (max-width: 900px) {
+  .accounts-cycle-date-button {
+    margin-top: 3px;
+    font-size: 10px;
+  }
+
+  .accounts-mobile-month > header > div .accounts-cycle-date-button {
+    color: #667085;
+  }
+}
