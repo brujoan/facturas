@@ -94,7 +94,7 @@ assert(styles.includes(".finance-kpis") && styles.includes(".invoice-status-sele
 assert(app.includes('tab === "cuentas"'), "La navegación debe incluir el apartado personal Cuentas.");
 assert(app.includes("nav-group-toggle") && app.includes("Autónomo"), "Los apartados profesionales deben agruparse en el desplegable Autónomo.");
 assert(personal.includes("Finanzas personales") && personal.includes("<h1>Cuentas</h1>"), "Cuentas debe tener una vista personal independiente.");
-assert(personal.includes('invoice.status !== "Cobrada"'), "Autónomo debe calcularse automáticamente desde facturas cobradas.");
+assert(!personal.includes('invoice.status !== "Cobrada"') && personal.includes('"freelanceIncome"'), "Autónomo debe registrarse manualmente y no derivarse de facturas cobradas.");
 assert(personal.includes("Nómina") && personal.includes("Ingreso extra") && personal.includes("Mensualidades") && personal.includes("Seguros") && personal.includes("Deporte"), "La tabla anual debe conservar las columnas del control personal.");
 assert(!personal.includes(">Motivo ing.<") && !personal.includes(">Motivo g.<"), "Ingreso extra y Gasto extra no deben ocupar columnas separadas de motivo.");
 assert(personal.includes("Ingreso total") && personal.includes("Gasto total") && personal.includes("Ahorro"), "La tabla debe calcular totales y ahorro mensual.");
