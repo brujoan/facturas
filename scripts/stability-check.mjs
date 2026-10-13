@@ -160,6 +160,9 @@ assert(personal.includes("onBlur={(e) =>") && personal.includes("!stored?.salary
 assert(personal.includes("missingSalaryCycle") && personal.includes("Falta fecha de nómina en"), "No se deben guardar movimientos en un ciclo anterior si existe una nómina posterior sin fecha.");
 assert(personal.includes('"⚠ Falta fecha"') && styles.includes(".accounts-cycle-date-button.missing"), "Las nóminas sin fecha deben quedar claramente marcadas en la interfaz.");
 assert(personal.includes("Los movimientos se asignan al ciclo abierto por la última nómina con fecha"), "La ayuda de Cuentas debe explicar que la fecha de nómina es necesaria para abrir el ciclo.");
+assert(personal.includes("function participatesInCycle(monthId: string)") && personal.includes('monthId >= "2026-09"'), "Los meses enero-agosto de 2026 deben quedar fuera de la lógica de ciclos.");
+assert(personal.includes("participatesInCycle(item.id) &&") && personal.includes("missingSalaryCycle"), "La validación de nóminas sin fecha debe ignorar los meses ocultos anteriores a septiembre de 2026.");
+
 
 
 
