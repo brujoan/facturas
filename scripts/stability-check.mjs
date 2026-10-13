@@ -128,6 +128,15 @@ assert(personal.includes('type BreakdownField = ExpenseField | "extraIncome"'), 
 assert(personal.includes('breakdownCell(row.id, row.name, "extraIncome"') && personal.includes('breakdownCell(row.id, row.name, "extraExpense"'), "Ingreso extra y Gasto extra deben mostrar un único total con desglose.");
 assert(personal.includes("date: quickDate") && personal.includes('className="accounts-breakdown-date"'), "Los movimientos desglosados añadidos rápidamente deben conservar y mostrar su fecha.");
 assert(styles.includes("/* v0.16.0 · Fecha rápida, extras desglosados y tipografía mayor */"), "Cuentas debe aprovechar las columnas eliminadas para aumentar la tipografía.");
+assert(personal.includes('"carExpense"') && personal.includes(">Coche<"), "Cuentas debe incluir una columna de gastos de coche.");
+assert(personal.includes("salaryDate?: string") && personal.includes("cycleMonthForDate"), "Cuentas debe guardar la fecha de nómina y usarla para asignar ciclos.");
+assert(personal.includes("rebalanceDatedBreakdowns") && personal.includes("salaryDate: quickDate"), "Registrar una nómina debe reajustar los movimientos fechados al ciclo correcto.");
+assert(personal.includes("payCycleRanges") && personal.includes("dayBefore"), "La fila mensual debe mostrar el rango real del ciclo de cobro.");
+assert(personal.includes("lastMovementDate") && personal.includes("Último:"), "Cuentas debe mostrar la fecha del último movimiento registrado.");
+assert(personal.includes("cycleMonthForDate(date, months)"), "Los ingresos automáticos de autónomo deben seguir los ciclos de nómina.");
+assert(styles.includes("/* v0.17.0 · Ciclos de nómina, coche y guía de celda */"), "Cuentas debe incluir estilos para ciclos y orientación visual.");
+assert(styles.includes("tr:not(.accounts-year-total):hover") && styles.includes(":nth-child(14):hover"), "La tabla debe resaltar fila y columna al pasar por una casilla.");
+
 
 
 
