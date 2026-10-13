@@ -526,6 +526,75 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
         </div>
       </div>
 
+      <div className="accounts-mobile-list">
+        {rows.map((row) => (
+          <article
+            key={`mobile-${row.id}`}
+            className={`accounts-mobile-month ${row.id === new Date().toISOString().slice(0, 7) ? "current-month" : ""}`}
+          >
+            <header>
+              <strong>{row.name}</strong>
+              <span className={row.savings < 0 ? "negative" : ""}>
+                Ahorro {shown(row.savings)}
+              </span>
+            </header>
+
+            <div className="accounts-mobile-section">
+              <h3>Ingresos</h3>
+              <div className="accounts-mobile-grid">
+                <label>Nómina{amountCell(row.id, "salary", row.salary, `Nómina de ${row.name}`)}</label>
+                <label className="accounts-mobile-auto">Autónomo<span>{shown(row.freelance)}</span></label>
+                <label>Ingreso extra{amountCell(row.id, "extraIncome", row.extraIncome, `Ingreso extra de ${row.name}`)}</label>
+                <label className="wide">
+                  Motivo ingreso extra
+                  <input
+                    type="text"
+                    value={row.extraIncomeReason}
+                    placeholder="Motivo"
+                    onChange={(e) => setField(row.id, "extraIncomeReason", e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="accounts-mobile-total income">
+                <span>Ingreso total</span>
+                <strong>{shown(row.totalIncome)}</strong>
+              </div>
+            </div>
+
+            <div className="accounts-mobile-section">
+              <h3>Gastos</h3>
+              <div className="accounts-mobile-grid">
+                <label>Mensualidades{amountCell(row.id, "monthlyPayments", row.monthlyPayments, `Mensualidades de ${row.name}`)}</label>
+                <label>Seguros{amountCell(row.id, "insurance", row.insurance, `Seguros de ${row.name}`)}</label>
+                <label>Ocio{amountCell(row.id, "leisure", row.leisure, `Ocio de ${row.name}`)}</label>
+                <label>Deporte{amountCell(row.id, "sport", row.sport, `Deporte de ${row.name}`)}</label>
+                <label>Gasto extra{amountCell(row.id, "extraExpense", row.extraExpense, `Gasto extra de ${row.name}`)}</label>
+                <label className="wide">
+                  Motivo gasto extra
+                  <input
+                    type="text"
+                    value={row.extraExpenseReason}
+                    placeholder="Motivo"
+                    onChange={(e) => setField(row.id, "extraExpenseReason", e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="accounts-mobile-total expense">
+                <span>Gasto total</span>
+                <strong>{shown(row.totalExpense)}</strong>
+              </div>
+            </div>
+          </article>
+        ))}
+
+        <article className="accounts-mobile-year-total">
+          <strong>TOTAL {year}</strong>
+          <div><span>Ingresos</span><b>{shown(totals.totalIncome)}</b></div>
+          <div><span>Gastos</span><b>{shown(totals.totalExpense)}</b></div>
+          <div className={totals.savings < 0 ? "negative" : ""}><span>Ahorro</span><b>{shown(totals.savings)}</b></div>
+        </article>
+      </div>
+
       <p className="accounts-note">
         Autónomo se calcula con las facturas marcadas como Cobradas y su fecha de cobro. El resto de celdas se edita directamente.
       </p>
