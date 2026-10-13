@@ -260,7 +260,8 @@ function rebalanceDatedBreakdowns(sourceMonths: AccountMonth[]) {
       const originalHadBreakdown = Boolean(original?.breakdowns?.[field]?.length);
       const items = next.breakdowns?.[field] || [];
       if (items.length || originalHadBreakdown) {
-        next[field] = money(items.reduce((sum, entry) => sum + Number(entry.amount || 0), 0)) as never;
+        (next as unknown as Record<BreakdownField, number>)[field] =
+          money(items.reduce((sum, entry) => sum + Number(entry.amount || 0), 0));
       }
     }
     return next;
@@ -768,12 +769,11 @@ export default function PersonalFinancePanel({ invoices, amountsVisible, onToggl
       return;
     }
 
-    let targetMonthId = quickDate.slice(0, 7);
+    const targetMonthId = quickType === "income" && quickSection === "salary"
+      ? quickDate.slice(0, 7)
+      : cycleMonthForDate(quickDate, months);
 
     setMonths((current) => {
-      targetMonthId = quickType === "income" && quickSection === "salary"
-        ? quickDate.slice(0, 7)
-        : cycleMonthForDate(quickDate, current);
 
       const index = current.findIndex((item) => item.id === targetMonthId);
       const base = index >= 0 ? current[index] : blankMonth(targetMonthId);
