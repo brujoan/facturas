@@ -203,6 +203,41 @@ const breakdownFields: BreakdownField[] = [
   "extraExpense"
 ];
 
+function salaryMonthForDate(date: string) {
+  if (date.startsWith("2026-08")) return "2026-09";
+  return date.slice(0, 7);
+}
+
+function normalize2026OpeningCycle(sourceMonths: AccountMonth[]) {
+  const augustId = "2026-08";
+  const septemberId = "2026-09";
+  const august = sourceMonths.find((item) => item.id === augustId);
+
+  if (!august?.salaryDate?.startsWith("2026-08") || august.salary <= 0) {
+    return sourceMonths;
+  }
+
+  const september = sourceMonths.find((item) => item.id === septemberId) || blankMonth(septemberId);
+  const movedSeptember: AccountMonth = {
+    ...september,
+    salary: money(september.salary + august.salary),
+    salaryReason: appendReason(september.salaryReason || "", august.salaryReason || ""),
+    salaryDate: august.salaryDate,
+    updatedAt: nowISO()
+  };
+  const clearedAugust: AccountMonth = {
+    ...august,
+    salary: 0,
+    salaryReason: "",
+    salaryDate: "",
+    updatedAt: nowISO()
+  };
+
+  return sourceMonths
+    .filter((item) => item.id !== augustId && item.id !== septemberId)
+    .concat(clearedAugust, movedSeptember);
+}
+
 function cycleMonthForDate(date: string, sourceMonths: AccountMonth[]) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date.slice(0, 7);
 
@@ -416,7 +451,7 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
           return next;
         });
 
-        setMonths(rebalanceDatedBreakdowns(normalizedMonths));
+        setMonths(rebalanceDatedBreakdowns(normalize2026OpeningCycle(normalizedMonths)));
         setReady(true);
       }
     }
@@ -825,44 +860,23 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
     if (!salaryDateEditor || !/^\d{4}-\d{2}-\d{2}$/.test(salaryDateEditor.date)) return;
 
     const sourceId = salaryDateEditor.monthId;
-    const targetId = salaryDateEditor.date.slice(0, 7);
 
     setMonths((current) => {
       const source = current.find((item) => item.id === sourceId) || blankMonth(sourceId);
-      let updated = [...current];
-
-      if (targetId === sourceId) {
-        const next = { ...source, salaryDate: salaryDateEditor.date, updatedAt: nowISO() };
-        const sourceIndex = updated.findIndex((item) => item.id === sourceId);
-        updated = sourceIndex < 0
-          ? [...updated, next]
-          : updated.map((item, index) => index === sourceIndex ? next : item);
-      } else {
-        const target = current.find((item) => item.id === targetId) || blankMonth(targetId);
-        const movedTarget = {
-          ...target,
-          salary: money(target.salary + source.salary),
-          salaryReason: appendReason(target.salaryReason || "", source.salaryReason || ""),
-          salaryDate: salaryDateEditor.date,
-          updatedAt: nowISO()
-        };
-        const clearedSource = {
-          ...source,
-          salary: 0,
-          salaryReason: "",
-          salaryDate: "",
-          updatedAt: nowISO()
-        };
-
-        updated = updated
-          .filter((item) => item.id !== sourceId && item.id !== targetId)
-          .concat(clearedSource, movedTarget);
-      }
+      const next = {
+        ...source,
+        salaryDate: salaryDateEditor.date,
+        updatedAt: nowISO()
+      };
+      const sourceIndex = current.findIndex((item) => item.id === sourceId);
+      const updated = sourceIndex < 0
+        ? [...current, next]
+        : current.map((item, index) => index === sourceIndex ? next : item);
 
       return rebalanceDatedBreakdowns(updated);
     });
 
-    setYear(Number(targetId.slice(0, 4)));
+    setYear(Number(sourceId.slice(0, 4)));
     setSalaryDateEditor(null);
   }
 
@@ -878,7 +892,7 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
     }
 
     const targetMonthId = quickType === "income" && quickSection === "salary"
-      ? quickDate.slice(0, 7)
+      ? salaryMonthForDate(quickDate)
       : cycleMonthForDate(quickDate, months);
 
     setMonths((current) => {
@@ -1299,7 +1313,7 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
                 onChange={(e) => setSalaryDateEditor((current) => current ? { ...current, date: e.target.value } : current)}
                 aria-label="Fecha de cobro de la nómina"
               />
-              <p>Al cambiarla se recalculan automáticamente los ciclos y se recolocan los movimientos fechados.</p>
+              <p>La fecha cambia el inicio del ciclo, pero la nómina se mantiene en esta fila. Los movimientos fechados se recolocan automáticamente.</p>
             </div>
             <footer>
               <button className="button secondary" onClick={() => setSalaryDateEditor(null)}>Cancelar</button>
