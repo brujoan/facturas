@@ -123,7 +123,7 @@ assert(personal.includes("Falta fecha, importe o concepto"), "El alta rápida de
 assert(personal.includes("Sin desglosar") && personal.includes("nextItems"), "Los gastos añadidos rápidamente deben integrarse en el desglose sin perder importes anteriores.");
 assert(styles.includes("/* v0.15.1 · Alta rápida de movimientos */") && styles.includes(".accounts-quick-movement"), "El acceso rápido debe tener estilos compactos y responsive.");
 assert(personal.includes('type="date"') && personal.includes("quickDate") && personal.includes("todayISO()"), "El alta rápida debe incluir fecha y usar hoy como valor inicial.");
-assert(personal.includes("const monthId = quickDate.slice(0, 7)") && personal.includes("setYear(targetYear)"), "La fecha del movimiento debe decidir el mes y año donde se guarda.");
+assert(personal.includes("cycleMonthForDate(quickDate, months)") && personal.includes("setYear(targetYear)"), "La fecha del movimiento debe decidir el ciclo y año donde se guarda.");
 assert(personal.includes('type BreakdownField = ExpenseField | "extraIncome"'), "Ingreso extra debe reutilizar el sistema de desglose.");
 assert(personal.includes('breakdownCell(row.id, row.name, "extraIncome"') && personal.includes('breakdownCell(row.id, row.name, "extraExpense"'), "Ingreso extra y Gasto extra deben mostrar un único total con desglose.");
 assert(personal.includes("date: quickDate") && personal.includes('className="accounts-breakdown-date"'), "Los movimientos desglosados añadidos rápidamente deben conservar y mostrar su fecha.");
