@@ -170,4 +170,9 @@ assert(personal.includes("participatesInCycle(item.id) &&") && personal.includes
 
 
 
+assert(personal.includes("const lastMovement = useMemo") && personal.includes("lastMovement.concept"), "Cuentas debe mostrar el concepto asociado al último movimiento.");
+assert(app.includes("function moveLine(id: string, direction: -1 | 1)") && app.includes("Subir concepto") && app.includes("Bajar concepto"), "Las líneas de factura deben poder reordenarse.");
+assert(app.includes("lines.splice(targetIndex, 0, line)"), "Reordenar una línea debe modificar el orden real del array de conceptos.");
+assert(styles.includes("/* v0.18.5 · Último concepto y orden de líneas de factura */") && styles.includes(".invoice-line-actions"), "La interfaz debe incluir estilos para el último concepto y los controles de orden.");
+
 console.log("Stability checks OK");
