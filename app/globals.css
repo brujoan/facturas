@@ -291,7 +291,7 @@ h3 { margin-bottom: 8px; }
 
 .line-head, .invoice-line {
   display: grid;
-  grid-template-columns: minmax(250px, 2.4fr) .55fr .8fr .65fr .65fr .9fr 34px;
+  grid-template-columns: minmax(250px, 2.4fr) .55fr .8fr .65fr .65fr .9fr 78px;
   gap: 8px;
   align-items: center;
 }
@@ -1034,7 +1034,7 @@ h3 { margin-bottom: 8px; }
 @media (min-width: 1101px) {
   .line-head.with-service-date,
   .invoice-line.with-service-date {
-    grid-template-columns: 125px minmax(250px, 2.4fr) .55fr .8fr .65fr .65fr .9fr 34px;
+    grid-template-columns: 125px minmax(250px, 2.4fr) .55fr .8fr .65fr .65fr .9fr 78px;
   }
 }
 .service-date-input { min-width: 0; }
@@ -6062,4 +6062,73 @@ h3 { margin-bottom: 8px; }
 
 .accounts-table tbody tr:has(.accounts-cycle-date-button.missing) > th {
   background: #fff7ed;
+}
+
+
+/* v0.18.5 · Último concepto y orden de líneas de factura */
+.accounts-last-movement {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: min(420px, 34vw);
+}
+
+.accounts-last-movement b {
+  min-width: 0;
+  overflow: hidden;
+  color: #344054;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoice-line-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 24px);
+  justify-content: end;
+  gap: 3px;
+  min-width: 0;
+}
+
+.line-order-button,
+.invoice-line-actions .icon-button {
+  width: 24px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: #f4f5f6;
+  color: #667085;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.invoice-line-actions .icon-button {
+  color: #7d8794;
+  font-size: 18px;
+}
+
+.line-order-button:hover:not(:disabled),
+.invoice-line-actions .icon-button:hover {
+  background: #e8eef6;
+  color: #344054;
+}
+
+.line-order-button:disabled {
+  opacity: .28;
+  cursor: default;
+}
+
+@media (max-width: 1050px) {
+  .invoice-line-actions {
+    justify-self: end;
+  }
+}
+
+@media (max-width: 900px) {
+  .accounts-last-movement {
+    max-width: min(100%, 360px);
+  }
 }

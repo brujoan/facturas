@@ -1573,6 +1573,19 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
     }));
   }
 
+  function moveLine(id: string, direction: -1 | 1) {
+    setDraft((current) => {
+      const index = current.lines.findIndex((line) => line.id === id);
+      const targetIndex = index + direction;
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.lines.length) return current;
+
+      const lines = [...current.lines];
+      const [line] = lines.splice(index, 1);
+      lines.splice(targetIndex, 0, line);
+      return { ...current, lines };
+    });
+  }
+
   function removeLine(id: string) {
     setDraft((current) => ({
       ...current,
@@ -2901,7 +2914,7 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                       <span>Actividad / concepto</span><span>Cant.</span><span>Precio</span><span>IVA %</span><span>IRPF %</span><span>Total base</span><span></span>
                     </div>
 
-                    {draft.lines.map((line) => (
+                    {draft.lines.map((line, lineIndex) => (
                       <div className={`invoice-line ${(draft.invoiceMode || "normal") === "monthly" ? "with-service-date" : ""}`} key={line.id}>
                         {(draft.invoiceMode || "normal") === "monthly" && (
                           <input
@@ -2939,7 +2952,31 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
                         <input type="number" step="0.01" value={line.vat} onChange={(e) => updateLine(line.id, { vat: Number(e.target.value) })} />
                         <input type="number" step="0.01" value={line.withholding} onChange={(e) => updateLine(line.id, { withholding: Number(e.target.value) })} />
                         <strong>{currency(lineBase(line))}</strong>
-                        <button className="icon-button" onClick={() => removeLine(line.id)} title="Eliminar línea">×</button>
+                        <div className="invoice-line-actions" aria-label="Orden y acciones de la línea">
+                          <button
+                            type="button"
+                            className="line-order-button"
+                            onClick={() => moveLine(line.id, -1)}
+                            disabled={lineIndex === 0}
+                            title="Subir concepto"
+                            aria-label="Subir concepto"
+                          >↑</button>
+                          <button
+                            type="button"
+                            className="line-order-button"
+                            onClick={() => moveLine(line.id, 1)}
+                            disabled={lineIndex === draft.lines.length - 1}
+                            title="Bajar concepto"
+                            aria-label="Bajar concepto"
+                          >↓</button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            onClick={() => removeLine(line.id)}
+                            title="Eliminar línea"
+                            aria-label="Eliminar línea"
+                          >×</button>
+                        </div>
                       </div>
                     ))}
 
