@@ -505,19 +505,30 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
     return () => window.clearTimeout(timer);
   }, [months, ready]);
 
-  const lastMovementDate = useMemo(() => {
-    const dates: string[] = [];
+  const lastMovement = useMemo(() => {
+    let latest = { date: "", concept: "" };
 
     for (const item of months) {
-      if (item.salaryDate) dates.push(item.salaryDate);
+      if (item.salaryDate && item.salaryDate >= latest.date) {
+        latest = {
+          date: item.salaryDate,
+          concept: item.salaryReason?.trim() || "Nómina"
+        };
+      }
+
       for (const field of breakdownFields) {
         for (const entry of item.breakdowns?.[field] || []) {
-          if (entry.date) dates.push(entry.date);
+          if (entry.date && entry.date >= latest.date) {
+            latest = {
+              date: entry.date,
+              concept: entry.concept?.trim() || "Movimiento"
+            };
+          }
         }
       }
     }
 
-    return dates.sort().at(-1) || "";
+    return latest;
   }, [months]);
 
   const payCycleRanges = useMemo(() => {
@@ -1061,7 +1072,8 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
             </button>
           )}
           <span className="accounts-last-movement">
-            Último: {lastMovementDate ? new Date(`${lastMovementDate}T12:00:00`).toLocaleDateString("es-ES") : "—"}
+            Último: {lastMovement.date ? new Date(`${lastMovement.date}T12:00:00`).toLocaleDateString("es-ES") : "—"}
+            {lastMovement.concept && <b title={lastMovement.concept}> · {lastMovement.concept}</b>}
           </span>
         </div>
 
