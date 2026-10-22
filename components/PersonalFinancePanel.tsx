@@ -1407,17 +1407,21 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
               <strong>Cuenta remunerada</strong>
               <small>Ahorros y emergencias</small>
             </div>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              value={diversification.reserve || ""}
-              placeholder="0"
-              aria-label="Saldo en cuenta remunerada"
-              onChange={(e) => setDiversification("savingsReserve", Number(e.target.value || 0))}
-            />
-            <b>{diversification.reservePercent}%</b>
+            {amountsVisible ? (
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={diversification.reserve || ""}
+                placeholder="0"
+                aria-label="Saldo en cuenta remunerada"
+                onChange={(e) => setDiversification("savingsReserve", Number(e.target.value || 0))}
+              />
+            ) : (
+              <span className="accounts-hidden">••••</span>
+            )}
+            <b>{amountsVisible ? `${diversification.reservePercent}%` : "••"}</b>
           </div>
 
           <div className="accounts-diversification-row">
@@ -1425,23 +1429,27 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
               <strong>Inversiones</strong>
               <small>Ahorros invertidos</small>
             </div>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              value={diversification.investments || ""}
-              placeholder="0"
-              aria-label="Saldo destinado a inversiones"
-              onChange={(e) => setDiversification("investmentSavings", Number(e.target.value || 0))}
-            />
-            <b>{diversification.investmentsPercent}%</b>
+            {amountsVisible ? (
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={diversification.investments || ""}
+                placeholder="0"
+                aria-label="Saldo destinado a inversiones"
+                onChange={(e) => setDiversification("investmentSavings", Number(e.target.value || 0))}
+              />
+            ) : (
+              <span className="accounts-hidden">••••</span>
+            )}
+            <b>{amountsVisible ? `${diversification.investmentsPercent}%` : "••"}</b>
           </div>
 
           <div className="accounts-diversification-total">
             <span>Total diversificado</span>
             <strong>{shownRounded(diversification.total)}</strong>
-            <b>{diversification.total > 0 ? "100%" : "0%"}</b>
+            <b>{amountsVisible ? (diversification.total > 0 ? "100%" : "0%") : "••"}</b>
           </div>
         </div>
       </section>
