@@ -52,6 +52,8 @@ type AccountMonth = {
   freelanceExpense: number;
   extraExpense: number;
   extraExpenseReason: string;
+  savingsReserve?: number;
+  investmentSavings?: number;
   breakdowns?: Partial<Record<BreakdownField, BreakdownItem[]>>;
   updatedAt?: string;
 };
@@ -104,6 +106,10 @@ function nowISO() {
 
 function currentYear() {
   return new Date().getFullYear();
+}
+
+function diversificationId(year: number) {
+  return `diversification-${year}`;
 }
 
 function todayISO() {
@@ -161,6 +167,8 @@ function blankMonth(id: string): AccountMonth {
     freelanceExpense: 0,
     extraExpense: 0,
     extraExpenseReason: "",
+    savingsReserve: 0,
+    investmentSavings: 0,
     breakdowns: {}
   };
 }
@@ -680,6 +688,39 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
       savings: money(averageTotals.savings / divisor)
     };
   }, [averageTotals, averageMonthCount]);
+
+  const diversification = useMemo(() => {
+    const stored = months.find((item) => item.id === diversificationId(year));
+    const reserve = money(stored?.savingsReserve || 0);
+    const investments = money(stored?.investmentSavings || 0);
+    const total = money(reserve + investments);
+
+    return {
+      reserve,
+      investments,
+      total,
+      reservePercent: total > 0 ? Math.round((reserve / total) * 100) : 0,
+      investmentsPercent: total > 0 ? Math.round((investments / total) * 100) : 0
+    };
+  }, [months, year]);
+
+  function setDiversification(field: "savingsReserve" | "investmentSavings", value: number) {
+    const id = diversificationId(year);
+    const cleanValue = money(Math.max(0, Number(value || 0)));
+
+    setMonths((current) => {
+      const existing = current.find((item) => item.id === id) || blankMonth(id);
+      const next = {
+        ...existing,
+        [field]: cleanValue,
+        updatedAt: nowISO()
+      };
+
+      return current.some((item) => item.id === id)
+        ? current.map((item) => item.id === id ? next : item)
+        : [...current, next];
+    });
+  }
 
   function setField<K extends keyof AccountMonth>(
     monthId: string,
@@ -1344,6 +1385,66 @@ export default function PersonalFinancePanel({ amountsVisible, onToggleAmounts }
           <div className={averages.savings < 0 ? "negative" : ""}><span>Ahorro</span><b>{shownRounded(averages.savings)}</b></div>
         </article>
       </div>
+
+      <section className="accounts-diversification panel" aria-label="Diversificación de ahorros">
+        <header>
+          <div>
+            <h3>Diversificación</h3>
+            <small>Ahorros · {year}</small>
+          </div>
+          <strong>{shownRounded(diversification.total)}</strong>
+        </header>
+
+        <div className="accounts-diversification-table">
+          <div className="accounts-diversification-head">
+            <span>Destino</span>
+            <span>Saldo</span>
+            <span>%</span>
+          </div>
+
+          <div className="accounts-diversification-row">
+            <div>
+              <strong>Cuenta remunerada</strong>
+              <small>Ahorros y emergencias</small>
+            </div>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={diversification.reserve || ""}
+              placeholder="0"
+              aria-label="Saldo en cuenta remunerada"
+              onChange={(e) => setDiversification("savingsReserve", Number(e.target.value || 0))}
+            />
+            <b>{diversification.reservePercent}%</b>
+          </div>
+
+          <div className="accounts-diversification-row">
+            <div>
+              <strong>Inversiones</strong>
+              <small>Ahorros invertidos</small>
+            </div>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={diversification.investments || ""}
+              placeholder="0"
+              aria-label="Saldo destinado a inversiones"
+              onChange={(e) => setDiversification("investmentSavings", Number(e.target.value || 0))}
+            />
+            <b>{diversification.investmentsPercent}%</b>
+          </div>
+
+          <div className="accounts-diversification-total">
+            <span>Total diversificado</span>
+            <strong>{shownRounded(diversification.total)}</strong>
+            <b>{diversification.total > 0 ? "100%" : "0%"}</b>
+          </div>
+        </div>
+      </section>
 
       <p className="accounts-note">
         Los movimientos se asignan al ciclo abierto por la última nómina con fecha. Si una nómina no tiene fecha, primero hay que indicarla para cerrar el ciclo anterior.
