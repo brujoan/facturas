@@ -175,4 +175,11 @@ assert(app.includes("function moveLine(id: string, direction: -1 | 1)") && app.i
 assert(app.includes("lines.splice(targetIndex, 0, line)"), "Reordenar una línea debe modificar el orden real del array de conceptos.");
 assert(styles.includes("/* v0.18.5 · Último concepto y orden de líneas de factura */") && styles.includes(".invoice-line-actions"), "La interfaz debe incluir estilos para el último concepto y los controles de orden.");
 
+assert(personal.includes("Diversificación") && personal.includes("Cuenta remunerada") && personal.includes("Ahorros y emergencias") && personal.includes("Inversiones"), "Cuentas debe incluir una tabla compacta de diversificación de ahorros.");
+assert(personal.includes("savingsReserve?: number") && personal.includes("investmentSavings?: number") && personal.includes("diversificationId(year)"), "La diversificación debe guardarse dentro de accountMonths para sincronizarse.");
+assert(personal.includes('setDiversification("savingsReserve"') && personal.includes('setDiversification("investmentSavings"'), "Los saldos de remunerada e inversiones deben poder editarse.");
+assert(personal.includes("reservePercent") && personal.includes("investmentsPercent") && personal.includes("Total diversificado"), "La diversificación debe mostrar porcentajes y total.");
+assert(personal.includes("amountsVisible ?") && personal.includes('"••"'), "La diversificación debe respetar la privacidad de importes.");
+assert(styles.includes("/* v0.18.6 · Diversificación de ahorros */") && styles.includes(".accounts-diversification-table"), "La diversificación debe tener una interfaz compacta propia.");
+
 console.log("Stability checks OK");

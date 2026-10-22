@@ -6132,3 +6132,138 @@ h3 { margin-bottom: 8px; }
     max-width: min(100%, 360px);
   }
 }
+
+
+/* v0.18.6 · Diversificación de ahorros */
+.accounts-diversification {
+  width: min(100%, 640px);
+  margin: 12px 0 0;
+  padding: 14px 16px;
+}
+
+.accounts-diversification > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.accounts-diversification > header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.accounts-diversification > header small {
+  display: block;
+  margin-top: 2px;
+  color: #7c8796;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.accounts-diversification > header > strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-diversification-table {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+
+.accounts-diversification-head,
+.accounts-diversification-row,
+.accounts-diversification-total {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px 54px;
+  align-items: center;
+  gap: 10px;
+}
+
+.accounts-diversification-head {
+  padding: 7px 10px;
+  background: #f7f8fa;
+  color: #8993a1;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.accounts-diversification-head span:nth-child(2),
+.accounts-diversification-head span:nth-child(3) {
+  text-align: right;
+}
+
+.accounts-diversification-row {
+  padding: 8px 10px;
+  border-top: 1px solid #edf0f3;
+}
+
+.accounts-diversification-row > div {
+  min-width: 0;
+}
+
+.accounts-diversification-row strong,
+.accounts-diversification-row small {
+  display: block;
+}
+
+.accounts-diversification-row strong {
+  font-size: 12px;
+}
+
+.accounts-diversification-row small {
+  margin-top: 2px;
+  color: #7c8796;
+  font-size: 9px;
+}
+
+.accounts-diversification-row input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 6px 8px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-diversification-row > b,
+.accounts-diversification-total > b {
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-diversification-total {
+  padding: 8px 10px;
+  border-top: 1px solid #d9e0e8;
+  background: #fafbfc;
+  font-size: 11px;
+}
+
+.accounts-diversification-total > strong {
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .accounts-diversification {
+    width: 100%;
+    padding: 12px;
+  }
+
+  .accounts-diversification-head,
+  .accounts-diversification-row,
+  .accounts-diversification-total {
+    grid-template-columns: minmax(0, 1fr) 105px 42px;
+    gap: 7px;
+  }
+
+  .accounts-diversification-row input {
+    font-size: 14px;
+  }
+}
