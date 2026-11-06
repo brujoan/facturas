@@ -554,7 +554,7 @@ export default function ChallengesPanel() {
                     </div>
 
                     <button
-                      className={`challenge-status ${isCompleted ? "done" : "pending"}`}
+                      className={`challenge-status ${current ? (isCompleted ? "done" : "failed") : "unregistered"}`}
                       onClick={() => toggleCompleted(challenge)}
                     >
                       {current ? (isCompleted ? "✓ Cumplido" : "× No cumplido") : "○ Sin registrar"}
