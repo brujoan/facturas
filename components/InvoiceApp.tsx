@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import FiscalPanel from "@/components/FiscalPanel";
 import FinancePanel from "@/components/FinancePanel";
 import PersonalFinancePanel from "@/components/PersonalFinancePanel";
+import AgendaPanel from "@/components/AgendaPanel";
+import ChallengesPanel from "@/components/ChallengesPanel";
 import { buildInvoicePdf } from "@/lib/invoicePdf";
 
-type Tab = "facturas" | "nueva" | "clientes" | "finanzas" | "fiscal" | "config" | "cuentas";
+type Tab = "facturas" | "nueva" | "clientes" | "finanzas" | "fiscal" | "config" | "cuentas" | "agenda" | "retos";
 type BillingPeriod = "month" | "year" | "total";
 type BillingCalendarView = "month" | "three" | "year";
 type BillingCompareMode = "month" | "year" | "range";
@@ -2027,6 +2029,12 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               <button className={tab === "cuentas" ? "active" : ""} onClick={() => setTab("cuentas")}>
                 <span>◉</span> Cuentas
               </button>
+              <button className={tab === "agenda" ? "active" : ""} onClick={() => setTab("agenda")}>
+                <span>▣</span> Agenda
+              </button>
+              <button className={tab === "retos" ? "active" : ""} onClick={() => setTab("retos")}>
+                <span>◇</span> Retos
+              </button>
             </nav>
           </div>
 
@@ -3111,6 +3119,10 @@ export default function InvoiceApp({ version, deployment }: InvoiceAppProps) {
               onToggleAmounts={() => setBillingVisible((visible) => !visible)}
             />
           )}
+
+          {tab === "agenda" && <AgendaPanel amountsVisible={billingVisible} />}
+
+          {tab === "retos" && <ChallengesPanel />}
 
           {tab === "fiscal" && <FiscalPanel invoices={invoices} />}
 
