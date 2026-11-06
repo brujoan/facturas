@@ -23,6 +23,11 @@ export type AppPayload = {
   deletedMovementIds?: string[];
   deletedRecurringIds?: string[];
   accountMonths?: unknown[];
+  agendaEvents?: unknown[];
+  deletedAgendaEventIds?: string[];
+  challenges?: unknown[];
+  challengeCompletions?: unknown[];
+  deletedChallengeIds?: string[];
 };
 
 export type SyncResult = {
