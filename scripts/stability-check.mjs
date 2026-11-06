@@ -12,6 +12,8 @@ const app = file("components/InvoiceApp.tsx");
 const fiscal = file("components/FiscalPanel.tsx");
 const finance = file("components/FinancePanel.tsx");
 const personal = file("components/PersonalFinancePanel.tsx");
+const agenda = file("components/AgendaPanel.tsx");
+const challenges = file("components/ChallengesPanel.tsx");
 const database = file("lib/database.ts");
 const edge = file("supabase/functions/facturas-sync/index.ts");
 const invoicePdf = file("lib/invoicePdf.ts");
@@ -181,5 +183,18 @@ assert(personal.includes('setDiversification("savingsReserve"') && personal.incl
 assert(personal.includes("reservePercent") && personal.includes("investmentsPercent") && personal.includes("Total diversificado"), "La diversificación debe mostrar porcentajes y total.");
 assert(personal.includes("amountsVisible ?") && personal.includes('"••"'), "La diversificación debe respetar la privacidad de importes.");
 assert(styles.includes("/* v0.18.6 · Diversificación de ahorros */") && styles.includes(".accounts-diversification-table"), "La diversificación debe tener una interfaz compacta propia.");
+
+assert(app.includes('"agenda" | "retos"') && app.includes("<AgendaPanel") && app.includes("<ChallengesPanel"), "Agenda y Retos deben estar integrados como secciones de la navegación principal.");
+assert(agenda.includes('type AgendaEventType = "punctual" | "routine"') && agenda.includes('Vista reducida') && agenda.includes('Vista ampliada'), "Agenda debe soportar eventos puntuales, rutinas y dos vistas semanales.");
+assert(agenda.includes("deleteEvent") && agenda.includes("toggleRoutineDay") && agenda.includes("type=\"color\""), "Agenda debe permitir editar, eliminar, repetir y cambiar colores.");
+assert(agenda.includes("Resumen del día") && agenda.includes("Resumen semanal") && agenda.includes("Mejores franjas libres") && agenda.includes("Posible sobrecarga"), "Agenda debe incluir el asistente diario y semanal.");
+assert(challenges.includes('type ChallengeFrequency = "daily" | "weekly" | "monthly"'), "Retos debe soportar frecuencia diaria, semanal y mensual.");
+assert(challenges.includes("deleteChallenge") && challenges.includes("saveChallenge") && challenges.includes("toggleCompleted"), "Retos debe permitir añadir, editar, eliminar y marcar cumplimiento.");
+assert(challenges.includes("Cumplimiento diario") && challenges.includes("Cumplimiento mensual") && challenges.includes("completionClass"), "Retos debe incluir las dos vistas de cuadrados por cumplimiento.");
+assert(challenges.includes("Reto más débil") && challenges.includes("Reto más fuerte") && challenges.includes("Mejor racha") && challenges.includes("Cumplimiento por reto"), "Retos debe ofrecer estadísticas útiles por objetivo.");
+assert(edge.includes("agendaEvents: mergeByKey") && edge.includes("challenges: mergeByKey") && edge.includes("challengeCompletions: mergeByKey"), "La sincronización personal debe fusionar Agenda y Retos por elemento.");
+assert(edge.includes("deletedAgendaEventIds") && edge.includes("deletedChallengeIds"), "Agenda y Retos deben conservar tombstones para borrados entre dispositivos.");
+assert(database.includes("agendaEvents?: unknown[]") && database.includes("challengeCompletions?: unknown[]"), "El payload personal debe tipar Agenda y Retos.");
+assert(styles.includes("/* v0.19.0 · Agenda y Retos */") && styles.includes(".agenda-time-grid") && styles.includes(".challenge-day-square"), "Agenda y Retos deben tener estilos propios responsive.");
 
 console.log("Stability checks OK");
