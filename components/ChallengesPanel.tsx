@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 
 type ChallengeFrequency = "daily" | "weekly" | "monthly";
+type ChallengeRule = "minimum" | "maximum";
 
 type Challenge = {
   id: string;
   title: string;
   frequency: ChallengeFrequency;
   target: number;
+  rule?: ChallengeRule;
   unit: string;
   color: string;
   updatedAt?: string;
@@ -117,6 +119,7 @@ function blankChallenge(frequency: ChallengeFrequency): Challenge {
     title: "",
     frequency,
     target: 1,
+    rule: "minimum",
     unit: "",
     color: COLORS[0]
   };
@@ -253,6 +256,23 @@ export default function ChallengesPanel() {
     return completionMap.get(`${challenge.id}:${key}`);
   }
 
+  function challengeIsCompleted(challenge: Challenge, value: number) {
+    const target = Math.max(0, Number(challenge.target || 0));
+    return (challenge.rule || "minimum") === "maximum"
+      ? value <= target
+      : value >= target;
+  }
+
+  function completionMet(challenge: Challenge, completion?: ChallengeCompletion) {
+    return Boolean(completion) && challengeIsCompleted(challenge, Number(completion?.value || 0));
+  }
+
+  function clearProgress(challenge: Challenge) {
+    const key = periodKey(challenge.frequency);
+    const id = `${challenge.id}:${key}`;
+    setCompletions((current) => current.filter((item) => item.id !== id));
+  }
+
   function setProgress(challenge: Challenge, value: number) {
     const key = periodKey(challenge.frequency);
     const id = `${challenge.id}:${key}`;
@@ -262,7 +282,7 @@ export default function ChallengesPanel() {
       challengeId: challenge.id,
       periodKey: key,
       value: cleanValue,
-      completed: cleanValue >= Math.max(1, challenge.target),
+      completed: challengeIsCompleted(challenge, cleanValue),
       updatedAt: nowISO()
     };
 
@@ -274,7 +294,16 @@ export default function ChallengesPanel() {
 
   function toggleCompleted(challenge: Challenge) {
     const current = completionFor(challenge);
-    setProgress(challenge, current?.completed ? 0 : Math.max(1, challenge.target));
+    const target = Math.max(0, Number(challenge.target || 0));
+
+    const isCompleted = completionMet(challenge, current);
+
+    if ((challenge.rule || "minimum") === "maximum") {
+      setProgress(challenge, isCompleted ? target + 1 : target);
+      return;
+    }
+
+    setProgress(challenge, isCompleted ? 0 : Math.max(1, target));
   }
 
   function saveChallenge(event: React.FormEvent) {
@@ -285,7 +314,10 @@ export default function ChallengesPanel() {
       ...editor,
       id: editingId || uid(),
       title,
-      target: Math.max(1, Number(editor.target || 1)),
+      target: (editor.rule || "minimum") === "maximum"
+        ? Math.max(0, Number(editor.target || 0))
+        : Math.max(1, Number(editor.target || 1)),
+      rule: editor.rule || "minimum",
       updatedAt: nowISO()
     };
     setChallenges((current) => [...current.filter((item) => item.id !== next.id), next]);
@@ -321,7 +353,7 @@ export default function ChallengesPanel() {
     const daily = challenges.filter((item) => item.frequency === "daily");
     if (!daily.length) return null;
     if (date > today) return null;
-    const completed = daily.filter((challenge) => completionFor(challenge, date)?.completed).length;
+    const completed = daily.filter((challenge) => completionMet(challenge, completionFor(challenge, date))).length;
     return Math.round((completed / daily.length) * 100);
   }
 
@@ -343,13 +375,13 @@ export default function ChallengesPanel() {
       const date = `${month}-${String(day).padStart(2, "0")}`;
       for (const challenge of daily) {
         possible += 1;
-        if (completionFor(challenge, date)?.completed) done += 1;
+        if (completionMet(challenge, completionFor(challenge, date))) done += 1;
       }
     }
 
     for (const challenge of monthly) {
       possible += 1;
-      if (completionFor(challenge, month)?.completed) done += 1;
+      if (completionMet(challenge, completionFor(challenge, month))) done += 1;
     }
 
     return possible ? Math.round((done / possible) * 100) : null;
@@ -360,14 +392,14 @@ export default function ChallengesPanel() {
     if (challenge.frequency === "daily") {
       for (let i = statsRange - 1; i >= 0; i -= 1) {
         const date = addDays(today, -i);
-        relevant.push(Boolean(completionFor(challenge, date)?.completed));
+        relevant.push(completionMet(challenge, completionFor(challenge, date)));
       }
     } else if (challenge.frequency === "weekly") {
       const currentMonday = mondayOf(today);
       const weeks = Math.max(4, Math.round(statsRange / 7));
       for (let i = weeks - 1; i >= 0; i -= 1) {
         const monday = addDays(currentMonday, -7 * i);
-        relevant.push(Boolean(completionFor(challenge, `week:${monday}`)?.completed));
+        relevant.push(completionMet(challenge, completionFor(challenge, `week:${monday}`)));
       }
     } else {
       const now = new Date();
@@ -375,7 +407,7 @@ export default function ChallengesPanel() {
       for (let i = months - 1; i >= 0; i -= 1) {
         const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-        relevant.push(Boolean(completionFor(challenge, key)?.completed));
+        relevant.push(completionMet(challenge, completionFor(challenge, key)));
       }
     }
 
@@ -398,7 +430,7 @@ export default function ChallengesPanel() {
       let current = 0;
       for (let i = 90; i >= 0; i -= 1) {
         const date = addDays(today, -i);
-        if (completionMap.get(`${challenge.id}:${date}`)?.completed) {
+        if (completionMet(challenge, completionMap.get(`${challenge.id}:${date}`))) {
           current += 1;
           best = Math.max(best, current);
         } else {
@@ -491,11 +523,17 @@ export default function ChallengesPanel() {
                 const current = completionFor(challenge);
                 const value = current?.value || 0;
                 const rate = challengeRate(challenge);
+                const isCompleted = completionMet(challenge, current);
                 return (
                   <div className="challenge-row" key={challenge.id}>
                     <div className="challenge-title-cell">
                       <i style={{ background: challenge.color }} />
-                      <strong>{challenge.title}</strong>
+                      <div>
+                        <strong>{challenge.title}</strong>
+                        <small className={`challenge-rule-badge ${(challenge.rule || "minimum") === "maximum" ? "maximum" : "minimum"}`}>
+                          {(challenge.rule || "minimum") === "maximum" ? `Máx. ${challenge.target}${challenge.unit ? ` ${challenge.unit}` : ""}` : `Mín. ${challenge.target}${challenge.unit ? ` ${challenge.unit}` : ""}`}
+                        </small>
+                      </div>
                     </div>
 
                     <div className="challenge-progress-input">
@@ -503,18 +541,23 @@ export default function ChallengesPanel() {
                         type="number"
                         min="0"
                         step="0.1"
-                        value={value || ""}
+                        value={current ? value : ""}
                         placeholder="0"
-                        onChange={(e) => setProgress(challenge, Number(e.target.value || 0))}
+                        onChange={(e) => e.target.value === ""
+                          ? clearProgress(challenge)
+                          : setProgress(challenge, Number(e.target.value))
+                        }
                       />
-                      <span>/ {challenge.target}{challenge.unit ? ` ${challenge.unit}` : ""}</span>
+                      <span>
+                        {(challenge.rule || "minimum") === "maximum" ? "máx." : "mín."} {challenge.target}{challenge.unit ? ` ${challenge.unit}` : ""}
+                      </span>
                     </div>
 
                     <button
-                      className={`challenge-status ${current?.completed ? "done" : "pending"}`}
+                      className={`challenge-status ${current ? (isCompleted ? "done" : "failed") : "unregistered"}`}
                       onClick={() => toggleCompleted(challenge)}
                     >
-                      {current?.completed ? "✓ Cumplido" : "○ Pendiente"}
+                      {current ? (isCompleted ? "✓ Cumplido" : "× No cumplido") : "○ Sin registrar"}
                     </button>
 
                     <div className="challenge-rate">
@@ -547,8 +590,14 @@ export default function ChallengesPanel() {
                     <option value="monthly">Mensual</option>
                   </select>
                 </label>
-                <label>Objetivo
-                  <input type="number" min="1" step="0.1" value={editor.target} onChange={(e) => setEditor((current) => ({ ...current, target: Number(e.target.value || 1) }))} />
+                <label>Regla
+                  <select value={editor.rule || "minimum"} onChange={(e) => setEditor((current) => ({ ...current, rule: e.target.value as ChallengeRule }))}>
+                    <option value="minimum">Objetivo mínimo</option>
+                    <option value="maximum">Limitador máximo</option>
+                  </select>
+                </label>
+                <label>{(editor.rule || "minimum") === "maximum" ? "Límite máximo" : "Objetivo mínimo"}
+                  <input type="number" min="0" step="0.1" value={editor.target} onChange={(e) => setEditor((current) => ({ ...current, target: Number(e.target.value || 0) }))} />
                 </label>
                 <label>Unidad
                   <input value={editor.unit} onChange={(e) => setEditor((current) => ({ ...current, unit: e.target.value }))} placeholder="L, h, €, veces…" />

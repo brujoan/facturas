@@ -197,4 +197,11 @@ assert(edge.includes("deletedAgendaEventIds") && edge.includes("deletedChallenge
 assert(database.includes("agendaEvents?: unknown[]") && database.includes("challengeCompletions?: unknown[]"), "El payload personal debe tipar Agenda y Retos.");
 assert(styles.includes("/* v0.19.0 · Agenda y Retos */") && styles.includes(".agenda-time-grid") && styles.includes(".challenge-day-square"), "Agenda y Retos deben tener estilos propios responsive.");
 
+assert(challenges.includes('type ChallengeRule = "minimum" | "maximum"') && challenges.includes('rule?: ChallengeRule'), "Los retos deben soportar regla mínima y limitador máximo.");
+assert(challenges.includes("function challengeIsCompleted") && challenges.includes('=== "maximum"') && challenges.includes("value <= target"), "Un limitador debe cumplirse solo si el valor no supera el máximo.");
+assert(challenges.includes("Limitador máximo") && challenges.includes("Límite máximo") && challenges.includes("Máx."), "El editor y la tabla deben mostrar claramente el modo limitador.");
+assert(challenges.includes("clearProgress") && challenges.includes('"○ Sin registrar"'), "Vaciar el progreso debe dejar el reto sin registrar, no marcarlo como cumplido.");
+assert(challenges.includes("completionMet(challenge") && challenges.includes("challengeRate"), "Las estadísticas deben recalcularse según la regla y el límite actuales.");
+assert(styles.includes("/* v0.19.1 · Retos con limitador máximo */") && styles.includes(".challenge-rule-badge.maximum") && styles.includes(".challenge-status.failed"), "Los limitadores deben tener estilos diferenciados y estado incumplido rojo.");
+
 console.log("Stability checks OK");

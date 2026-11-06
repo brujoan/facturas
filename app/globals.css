@@ -6968,11 +6968,36 @@ h3 { margin-bottom: 8px; }
   border-radius: 8px;
 }
 
+.challenge-title-cell > div {
+  min-width: 0;
+}
+
 .challenge-title-cell strong {
+  display: block;
   overflow: hidden;
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.challenge-rule-badge {
+  display: inline-flex;
+  margin-top: 3px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  font-size: 7px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.challenge-rule-badge.minimum {
+  background: #eef2ff;
+  color: #4f46a5;
+}
+
+.challenge-rule-badge.maximum {
+  background: #fff4e8;
+  color: #9a5b16;
 }
 
 .challenge-progress-input {
@@ -7015,9 +7040,14 @@ h3 { margin-bottom: 8px; }
   color: #23773c;
 }
 
-.challenge-status.pending {
+.challenge-status.failed {
   background: #fff0ef;
   color: #b42318;
+}
+
+.challenge-status.unregistered {
+  background: #f2f4f7;
+  color: #667085;
 }
 
 .challenge-rate {
@@ -7100,7 +7130,7 @@ h3 { margin-bottom: 8px; }
 
 .challenge-editor-grid {
   display: grid;
-  grid-template-columns: minmax(160px, 1.4fr) 120px 85px minmax(90px, .7fr);
+  grid-template-columns: minmax(160px, 1.4fr) 115px 130px 90px minmax(90px, .7fr);
   gap: 8px;
   align-items: end;
 }
@@ -7527,4 +7557,18 @@ h3 { margin-bottom: 8px; }
   .challenge-kpis {
     grid-template-columns: 1fr;
   }
+}
+
+
+/* v0.19.1 · Retos con limitador máximo */
+.challenge-rule-badge.maximum::before {
+  content: "≤";
+  margin-right: 3px;
+  font-weight: 900;
+}
+
+.challenge-rule-badge.minimum::before {
+  content: "≥";
+  margin-right: 3px;
+  font-weight: 900;
 }
