@@ -225,8 +225,12 @@ function mergeState(scope: string, current: unknown, incoming: unknown, now: str
   if (scope === "personal") {
     const deletedMovementIds = mergeStringSet(oldState.deletedMovementIds, newState.deletedMovementIds);
     const deletedRecurringIds = mergeStringSet(oldState.deletedRecurringIds, newState.deletedRecurringIds);
+    const deletedAgendaEventIds = mergeStringSet(oldState.deletedAgendaEventIds, newState.deletedAgendaEventIds);
+    const deletedChallengeIds = mergeStringSet(oldState.deletedChallengeIds, newState.deletedChallengeIds);
     const deletedMovements = new Set(deletedMovementIds);
     const deletedRecurring = new Set(deletedRecurringIds);
+    const deletedAgendaEvents = new Set(deletedAgendaEventIds);
+    const deletedChallenges = new Set(deletedChallengeIds);
 
     return {
       ...oldState,
@@ -236,8 +240,20 @@ function mergeState(scope: string, current: unknown, incoming: unknown, now: str
       recurring: mergeByKey(oldState.recurring, newState.recurring, "id", now)
         .filter((row) => !deletedRecurring.has(String(row.id || ""))),
       accountMonths: mergeByKey(oldState.accountMonths, newState.accountMonths, "id", now),
+      agendaEvents: mergeByKey(oldState.agendaEvents, newState.agendaEvents, "id", now)
+        .filter((row) => !deletedAgendaEvents.has(String(row.id || ""))),
+      challenges: mergeByKey(oldState.challenges, newState.challenges, "id", now)
+        .filter((row) => !deletedChallenges.has(String(row.id || ""))),
+      challengeCompletions: mergeByKey(
+        oldState.challengeCompletions,
+        newState.challengeCompletions,
+        "id",
+        now
+      ).filter((row) => !deletedChallenges.has(String(row.challengeId || ""))),
       deletedMovementIds,
-      deletedRecurringIds
+      deletedRecurringIds,
+      deletedAgendaEventIds,
+      deletedChallengeIds
     };
   }
 
