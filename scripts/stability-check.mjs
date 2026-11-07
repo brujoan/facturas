@@ -204,4 +204,10 @@ assert(challenges.includes("clearProgress") && challenges.includes('"○ Sin reg
 assert(challenges.includes("completionMet(challenge") && challenges.includes("challengeRate"), "Las estadísticas deben recalcularse según la regla y el límite actuales.");
 assert(styles.includes("/* v0.19.1 · Retos con limitador máximo */") && styles.includes(".challenge-rule-badge.maximum") && styles.includes(".challenge-status.failed"), "Los limitadores deben tener estilos diferenciados y estado incumplido rojo.");
 
+assert(agenda.includes("excludedDates?: string[]") && agenda.includes("excludeRoutineDate") && agenda.includes("restoreRoutineDate"), "Las rutinas deben permitir excepciones por fecha concreta y restaurarlas.");
+assert(agenda.includes("Omitir solo") && agenda.includes("editingOccurrenceDate"), "Al editar una ocurrencia de rutina debe poder omitirse solo ese día.");
+assert(agenda.includes("Array.from({ length: 14 }") && agenda.includes("compactWeeks") && agenda.includes("Semana siguiente"), "La vista reducida debe mostrar dos semanas: actual y siguiente.");
+assert(agenda.includes('view === "compact" ? 13 : 6') && agenda.includes('view === "compact" ? 14 : 7'), "La navegación y el rango deben adaptarse a 14 días en vista reducida.");
+assert(styles.includes("/* v0.19.2 · Excepciones de rutina y dos semanas */") && styles.includes(".agenda-routine-exceptions") && styles.includes(".agenda-compact-week-label"), "Las excepciones y la doble semana deben tener estilos propios.");
+
 console.log("Stability checks OK");
