@@ -10,6 +10,7 @@ type AgendaEvent = {
   type: AgendaEventType;
   date?: string;
   weekdays?: number[];
+  excludedDates?: string[];
   startTime: string;
   endTime: string;
   color: string;
@@ -109,6 +110,7 @@ function blankEvent(weekStart: string): AgendaEvent {
     type: "punctual",
     date: weekStart,
     weekdays: [0],
+    excludedDates: [],
     startTime: "18:00",
     endTime: "19:00",
     color: DEFAULT_COLORS[0],
@@ -126,10 +128,12 @@ function contrastText(hex: string) {
 }
 
 function occurrenceForDate(event: AgendaEvent, date: string, dayIndex: number): AgendaOccurrence | null {
+  const weekdayIndex = dayIndex % 7;
   const matches = event.type === "punctual"
     ? event.date === date
-    : (event.weekdays || []).includes(dayIndex);
+    : (event.weekdays || []).includes(weekdayIndex);
   if (!matches) return null;
+  if (event.type === "routine" && (event.excludedDates || []).includes(date)) return null;
   const startMinutes = timeToMinutes(event.startTime);
   const endMinutes = Math.max(startMinutes + 30, timeToMinutes(event.endTime));
   return { event, date, dayIndex, startMinutes, endMinutes };
@@ -163,6 +167,7 @@ export default function AgendaPanel(_: Props) {
   const [view, setView] = useState<"compact" | "expanded">("compact");
   const [editor, setEditor] = useState<AgendaEvent>(() => blankEvent(mondayOf(localDateISO())));
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingOccurrenceDate, setEditingOccurrenceDate] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -248,6 +253,16 @@ export default function AgendaPanel(_: Props) {
     [weekStart]
   );
 
+  const compactDates = useMemo(
+    () => Array.from({ length: 14 }, (_, index) => addDays(weekStart, index)),
+    [weekStart]
+  );
+
+  const compactWeeks = useMemo(
+    () => [compactDates.slice(0, 7), compactDates.slice(7, 14)],
+    [compactDates]
+  );
+
   const occurrences = useMemo(() => {
     const items: AgendaOccurrence[] = [];
     events.forEach((event) => {
@@ -258,6 +273,17 @@ export default function AgendaPanel(_: Props) {
     });
     return items;
   }, [events, weekDates]);
+
+  const compactOccurrences = useMemo(() => {
+    const items: AgendaOccurrence[] = [];
+    events.forEach((event) => {
+      compactDates.forEach((date, dayIndex) => {
+        const occurrence = occurrenceForDate(event, date, dayIndex);
+        if (occurrence) items.push(occurrence);
+      });
+    });
+    return items;
+  }, [events, compactDates]);
 
   const punctualOccurrences = occurrences.filter((item) => item.event.type === "punctual");
   const routineOccurrences = occurrences.filter((item) => item.event.type === "routine");
@@ -290,12 +316,45 @@ export default function AgendaPanel(_: Props) {
 
   function resetEditor(type: AgendaEventType = "punctual") {
     setEditingId(null);
+    setEditingOccurrenceDate(null);
     setEditor({ ...blankEvent(weekStart), type, weekdays: type === "routine" ? [0, 2, 4] : [0] });
   }
 
-  function editEvent(event: AgendaEvent) {
+  function editEvent(event: AgendaEvent, occurrenceDate?: string) {
     setEditingId(event.id);
-    setEditor({ ...event, weekdays: [...(event.weekdays || [])] });
+    setEditingOccurrenceDate(occurrenceDate || null);
+    setEditor({
+      ...event,
+      weekdays: [...(event.weekdays || [])],
+      excludedDates: [...(event.excludedDates || [])]
+    });
+  }
+
+  function excludeRoutineDate(id: string, date: string) {
+    setEvents((current) => current.map((item) => {
+      if (item.id !== id || item.type !== "routine") return item;
+      return {
+        ...item,
+        excludedDates: [...new Set([...(item.excludedDates || []), date])].sort(),
+        updatedAt: nowISO()
+      };
+    }));
+    resetEditor("routine");
+  }
+
+  function restoreRoutineDate(id: string, date: string) {
+    setEvents((current) => current.map((item) => {
+      if (item.id !== id) return item;
+      return {
+        ...item,
+        excludedDates: (item.excludedDates || []).filter((itemDate) => itemDate !== date),
+        updatedAt: nowISO()
+      };
+    }));
+    setEditor((current) => ({
+      ...current,
+      excludedDates: (current.excludedDates || []).filter((itemDate) => itemDate !== date)
+    }));
   }
 
   function saveEvent(event: React.FormEvent) {
@@ -312,6 +371,7 @@ export default function AgendaPanel(_: Props) {
       title,
       date: editor.type === "punctual" ? editor.date : "",
       weekdays: editor.type === "routine" ? [...(editor.weekdays || [])] : [],
+      excludedDates: editor.type === "routine" ? [...(editor.excludedDates || [])] : [],
       updatedAt: nowISO()
     };
 
@@ -346,7 +406,7 @@ export default function AgendaPanel(_: Props) {
         <div>
           <p className="eyebrow">Organización personal</p>
           <h1>Agenda</h1>
-          <p className="muted">Eventos puntuales, rutinas y bloques de tiempo en una sola semana.</p>
+          <p className="muted">Eventos puntuales, rutinas y bloques de tiempo con vista de una o dos semanas.</p>
         </div>
         <span className={`agenda-sync ${syncStatus}`}>
           {syncStatus === "saving" ? "Guardando…" : syncStatus === "saved" ? "Sincronizado" : syncStatus === "error" ? "Error de sincronización" : "Local"}
@@ -354,12 +414,12 @@ export default function AgendaPanel(_: Props) {
       </header>
 
       <div className="agenda-toolbar panel">
-        <button className="agenda-nav-arrow" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Semana anterior">‹</button>
+        <button className="agenda-nav-arrow" onClick={() => setWeekStart(addDays(weekStart, view === "compact" ? -14 : -7))} aria-label={view === "compact" ? "Dos semanas anteriores" : "Semana anterior"}>‹</button>
         <button className="agenda-week-label" onClick={() => setWeekStart(mondayOf(localDateISO()))}>
-          <span>Semana</span>
-          <strong>{formatShortDate(weekStart)} – {formatShortDate(addDays(weekStart, 6))}</strong>
+          <span>{view === "compact" ? "2 semanas" : "Semana"}</span>
+          <strong>{formatShortDate(weekStart)} – {formatShortDate(addDays(weekStart, view === "compact" ? 13 : 6))}</strong>
         </button>
-        <button className="agenda-nav-arrow" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Semana siguiente">›</button>
+        <button className="agenda-nav-arrow" onClick={() => setWeekStart(addDays(weekStart, view === "compact" ? 14 : 7))} aria-label={view === "compact" ? "Dos semanas siguientes" : "Semana siguiente"}>›</button>
         <div className="agenda-view-toggle">
           <button className={view === "compact" ? "active" : ""} onClick={() => setView("compact")}>☷ Vista reducida</button>
           <button className={view === "expanded" ? "active" : ""} onClick={() => setView("expanded")}>▦ Vista ampliada</button>
@@ -370,54 +430,71 @@ export default function AgendaPanel(_: Props) {
         <div className="agenda-main">
           {view === "compact" ? (
             <div className="agenda-compact panel">
-              <div className="agenda-compact-head">
-                <span />
-                {weekDates.map((date, index) => (
-                  <div key={date} className={date === today ? "today" : ""}>
-                    <strong>{DAY_NAMES[index]}</strong>
-                    <small>{formatShortDate(date)}</small>
-                  </div>
-                ))}
-              </div>
+              {compactWeeks.map((dates, weekIndex) => {
+                const dateSet = new Set(dates);
+                const weekItems = compactOccurrences.filter((item) => dateSet.has(item.date));
+                const weekPunctual = weekItems.filter((item) => item.event.type === "punctual");
+                const weekRoutine = weekItems.filter((item) => item.event.type === "routine");
 
-              <div className="agenda-compact-row">
-                <div className="agenda-row-label"><strong>Puntuales</strong><small>{punctualOccurrences.length} esta semana</small></div>
-                {weekDates.map((date, dayIndex) => (
-                  <div className="agenda-day-cell" key={`p-${date}`}>
-                    {punctualOccurrences.filter((item) => item.dayIndex === dayIndex).map((item) => (
-                      <button
-                        key={item.event.id}
-                        className="agenda-chip"
-                        style={{ background: item.event.color, color: contrastText(item.event.color) }}
-                        onClick={() => editEvent(item.event)}
-                        title={`${item.event.title} · ${item.event.startTime}–${item.event.endTime}`}
-                      >
-                        <strong>{item.event.title}</strong>
-                        <small>{item.event.startTime}</small>
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
+                return (
+                  <section className="agenda-compact-week" key={dates[0]}>
+                    <div className="agenda-compact-week-label">
+                      <strong>{weekIndex === 0 ? "Semana en vigor" : "Semana siguiente"}</strong>
+                      <span>{formatShortDate(dates[0])} – {formatShortDate(dates[6])}</span>
+                    </div>
 
-              <div className="agenda-compact-row routines">
-                <div className="agenda-row-label"><strong>Rutinas</strong><small>{routineOccurrences.length} bloques</small></div>
-                {weekDates.map((date, dayIndex) => (
-                  <div className="agenda-day-cell" key={`r-${date}`}>
-                    {routineOccurrences.filter((item) => item.dayIndex === dayIndex).map((item) => (
-                      <button
-                        key={item.event.id}
-                        className="agenda-chip routine"
-                        style={{ background: item.event.color, color: contrastText(item.event.color) }}
-                        onClick={() => editEvent(item.event)}
-                      >
-                        <strong>{item.event.title}</strong>
-                        <small>{item.event.startTime}</small>
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
+                    <div className="agenda-compact-head">
+                      <span />
+                      {dates.map((date, index) => (
+                        <div key={date} className={date === today ? "today" : ""}>
+                          <strong>{DAY_NAMES[index]}</strong>
+                          <small>{formatShortDate(date)}</small>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="agenda-compact-row">
+                      <div className="agenda-row-label"><strong>Puntuales</strong><small>{weekPunctual.length} esta semana</small></div>
+                      {dates.map((date) => (
+                        <div className="agenda-day-cell" key={`p-${date}`}>
+                          {weekPunctual.filter((item) => item.date === date).map((item) => (
+                            <button
+                              key={item.event.id}
+                              className="agenda-chip"
+                              style={{ background: item.event.color, color: contrastText(item.event.color) }}
+                              onClick={() => editEvent(item.event, item.date)}
+                              title={`${item.event.title} · ${item.event.startTime}–${item.event.endTime}`}
+                            >
+                              <strong>{item.event.title}</strong>
+                              <small>{item.event.startTime}</small>
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="agenda-compact-row routines">
+                      <div className="agenda-row-label"><strong>Rutinas</strong><small>{weekRoutine.length} bloques</small></div>
+                      {dates.map((date) => (
+                        <div className="agenda-day-cell" key={`r-${date}`}>
+                          {weekRoutine.filter((item) => item.date === date).map((item) => (
+                            <button
+                              key={item.event.id}
+                              className="agenda-chip routine"
+                              style={{ background: item.event.color, color: contrastText(item.event.color) }}
+                              onClick={() => editEvent(item.event, item.date)}
+                              title={`${item.event.title} · ${item.event.startTime}–${item.event.endTime} · clic para editar u omitir este día`}
+                            >
+                              <strong>{item.event.title}</strong>
+                              <small>{item.event.startTime}</small>
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           ) : (
             <div className="agenda-expanded panel">
@@ -465,7 +542,7 @@ export default function AgendaPanel(_: Props) {
                         background: item.event.color,
                         color: contrastText(item.event.color)
                       }}
-                      onClick={() => editEvent(item.event)}
+                      onClick={() => editEvent(item.event, item.date)}
                     >
                       <strong>{item.event.title}</strong>
                       <small>{item.event.startTime}–{item.event.endTime}</small>
@@ -523,6 +600,24 @@ export default function AgendaPanel(_: Props) {
               </label>
             </div>
 
+            {editor.type === "routine" && (editor.excludedDates || []).length > 0 && (
+              <div className="agenda-routine-exceptions">
+                <span>Excepciones</span>
+                <div>
+                  {(editor.excludedDates || []).map((date) => (
+                    <button
+                      type="button"
+                      key={date}
+                      onClick={() => editingId && restoreRoutineDate(editingId, date)}
+                      title="Restaurar esta fecha"
+                    >
+                      {formatShortDate(date)} · restaurar
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="agenda-editor-footer">
               <div className="agenda-color-picker">
                 <span>Color</span>
@@ -539,6 +634,15 @@ export default function AgendaPanel(_: Props) {
                 <input type="color" value={editor.color} onChange={(e) => setEditor((current) => ({ ...current, color: e.target.value }))} aria-label="Color personalizado" />
               </div>
               <div className="agenda-editor-actions">
+                {editingId && editor.type === "routine" && editingOccurrenceDate && (
+                  <button
+                    type="button"
+                    className="button agenda-skip-once"
+                    onClick={() => excludeRoutineDate(editingId, editingOccurrenceDate)}
+                  >
+                    Omitir solo {formatShortDate(editingOccurrenceDate)}
+                  </button>
+                )}
                 <button type="button" className="button secondary" onClick={() => resetEditor(editor.type)}>Limpiar</button>
                 <button className="button primary" type="submit">{editingId ? "Guardar cambios" : "Añadir evento"}</button>
               </div>
